@@ -4,12 +4,17 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import Image from "next/image";
 import Logo from "@/components/Logo";
+import { useRouter } from "next/navigation";
 
 
 export default function RegisterPage() {
+
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
   const handleRegister = async (e : React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +36,14 @@ export default function RegisterPage() {
             setError(data.message || "Coś poszło nie tak")
             return ;
         }
+        
+        setSuccess(true);
+
+        setTimeout(() => {
+          router.push("/login"); 
+        }, 5000);
+
+
     }catch(err) {
         console.error(err);
         setError("Nie udało się połączyć z serwerem")
@@ -41,6 +54,18 @@ export default function RegisterPage() {
 
 
   return (
+    <>
+      {success && (
+        <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-6"></div>
+          <h2 className="text-2xl font-semibold text-gray-700">
+            Pomyślnie stworzono konto 🎉
+          </h2>
+          <p className="text-gray-500 mt-2">
+            Za chwilę nastąpi przekierowanie...
+          </p>
+        </div>
+      )}
     <div className="w-screen h-screen bg-gradient-to-br from-primary to-secondary flex">
       <div className="w-[50%]"></div>
       <div className="bg-white w-[50%] p-20 relative">
@@ -116,5 +141,6 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

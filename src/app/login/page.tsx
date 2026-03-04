@@ -12,6 +12,43 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const user = {
+      email,
+      password,
+    };
+
+    try {
+      const res = await fetch(
+        process.env.NEXT_PUBLIC_SERVER_URL + "/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(user),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || "Coś poszło nie tak");
+        return;
+      }
+
+      localStorage.setItem("accessToken", data.accessToken);
+
+      window.location.href = "/";
+    } catch (err) {
+      console.error(err);
+      setError("Nie udało się połączyć z serwerem");
+    }
+  };
+
+
   return (
     <div className="w-screen h-screen bg-gradient-to-br from-primary to-secondary flex">
       <div className="w-[50%]"></div>
@@ -22,7 +59,7 @@ export default function LoginPage() {
         <div className="absolute top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[80%]">
           <h1 className="font-bold text-4xl mb-8">Log In</h1>
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-          <form className="space-y-1">
+          <form className="space-y-1" onSubmit={handleLogin}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email

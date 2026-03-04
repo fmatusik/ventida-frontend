@@ -1,8 +1,19 @@
+"use client";
 import { Search, ShoppingBag, Heart, User, Menu, TrendingUp, Zap, Star } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { useUser } from '@/context/UserContext';
 
 export default function Home() {
+  const [token, setToken] = useState<string | null>(null);
+  const { user } = useUser();
+  console.log(user?.email);
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem("accessToken");
+    setToken(storedToken);
+  }, []);
   const trendingItems = [
     { 
       id: 1, 

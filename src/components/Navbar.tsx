@@ -14,12 +14,6 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16 sm:h-20">
             <div className="flex items-center gap-8 lg:gap-12">
               <Logo />
-              <nav className="hidden lg:flex items-center gap-8">
-                <a href="#" className="text-sm text-neutral-600 hover:text-black transition-colors">Men<span className="ml-2 text-xs text-neutral-400">534</span></a>
-                <a href="#" className="text-sm text-neutral-600 hover:text-black transition-colors">Women<span className="ml-2 text-xs text-neutral-400">463</span></a>
-                <a href="#" className="text-sm text-neutral-600 hover:text-black transition-colors">Electronics<span className="ml-2 text-xs text-neutral-400">892</span></a>
-                <a href="#" className="text-sm text-neutral-600 hover:text-black transition-colors">Home<span className="ml-2 text-xs text-neutral-400">321</span></a>
-              </nav>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
               
@@ -59,7 +53,7 @@ export default function Navbar() {
               </button>
               <button 
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="p-2 hover:bg-neutral-100 rounded-full transition-colors lg:hidden"
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors sm:hidden md:hidden lg:hidden"
               >
                 {menuOpen ? (
                   <X className="w-5 h-5 text-neutral-700" />
@@ -99,27 +93,6 @@ export default function Navbar() {
                   className="w-full px-4 py-2 bg-neutral-100 border border-neutral-200 rounded-full focus:outline-none focus:ring-2 focus:ring-neutral-400 text-sm"
                 />
               </div>
-
-              {/* Categories */}
-              <nav className="space-y-1 mb-8">
-                <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Categories</h3>
-                <a href="#" className="flex items-center justify-between px-4 py-3 text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors">
-                  <span>Men</span>
-                  <span className="text-xs text-neutral-400">534</span>
-                </a>
-                <a href="#" className="flex items-center justify-between px-4 py-3 text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors">
-                  <span>Women</span>
-                  <span className="text-xs text-neutral-400">463</span>
-                </a>
-                <a href="#" className="flex items-center justify-between px-4 py-3 text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors">
-                  <span>Electronics</span>
-                  <span className="text-xs text-neutral-400">892</span>
-                </a>
-                <a href="#" className="flex items-center justify-between px-4 py-3 text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors">
-                  <span>Home</span>
-                  <span className="text-xs text-neutral-400">321</span>
-                </a>
-              </nav>
 
               {/* Actions */}
               <div className="space-y-1 sm:hidden">
