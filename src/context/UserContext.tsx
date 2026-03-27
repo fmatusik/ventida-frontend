@@ -1,18 +1,9 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {UserResponseDto} from "@/models/user/UserResponseDto";
 
-export class UserResponseDto {
-  id!: number;
-  name!: string;
-  surname!: string;
-  username!: string;
-  email!: string;
-  phone_number?: string;
-  pictureUrl?: string;
-  googleId?: string;
-  createdAt!: Date;
-}
+
 
 type UserContextType = {
   user: UserResponseDto | null;
@@ -33,7 +24,12 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         fetch(process.env.NEXT_PUBLIC_SERVER_URL + "/user/me", {
         headers: { Authorization: `Bearer ${token}` },
         })
-        .then(res => res.json()) 
+        .then(res => {
+            if(!res.ok) {
+                setUser(null);
+            }
+            return res.json()
+        })
         .then((data: UserResponseDto) => {
             setUser(data);
         })

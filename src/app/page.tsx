@@ -8,7 +8,6 @@ import { useUser } from '@/context/UserContext';
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const { user } = useUser();
-  console.log(user?.email);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("accessToken");
