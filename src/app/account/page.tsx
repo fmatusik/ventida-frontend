@@ -8,11 +8,15 @@ import {useSearchParams} from "next/navigation";
 import {AccountDetailDto} from "@/models/user/AccountDetailDto";
 import {ShortListingSummaryDto} from "@/models/listing/ShortListingSummaryDto";
 import {GetReviewDto} from "@/models/review/GetReviewDto";
+import ShareModal from "@/modals/ShareModal";
+import EditProfileModal from "@/modals/EditProfileModal";
 
 export default function UserProfilePage() {
   const searchParams = useSearchParams();
   const userId = searchParams.get('id');
   const [activeTab, setActiveTab] = useState<'listings' | 'reviews'>('listings');
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [foundUser, setFoundUser] = useState<AccountDetailDto | null>(null);
   const [foundListings, setFoundListings] = useState<ShortListingSummaryDto[]>([]);
   const [foundReviews, setFoundReviews] = useState<GetReviewDto[]>([]);
@@ -54,7 +58,12 @@ export default function UserProfilePage() {
   return (
     <div className="min-h-screen bg-neutral-50">
       <Navbar />
-      
+      {isShareOpen && (
+          <ShareModal shareUrl={window.location.href} onClose={() => setIsShareOpen(false)} />
+      )}
+      {isEditOpen && (
+          <EditProfileModal onClose={() => setIsEditOpen(false)} userId={userId}/>
+      )}
       <div className="pt-24">
         {/* Profile Header */}
         <div className="bg-white border-b border-neutral-200">
@@ -86,7 +95,9 @@ export default function UserProfilePage() {
                     )}
                   </div>
                   {user?.id == foundUser?.id && (
-                  <button className="px-6 py-3 border border-neutral-300 text-sm font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2">
+                  <button className="px-6 py-3 border border-neutral-300 text-sm font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2"
+                    onClick={() => setIsEditOpen(true)}
+                  >
                     <Edit2 className="w-4 h-4" />
                     Edit Profile
                   </button>
@@ -133,7 +144,9 @@ export default function UserProfilePage() {
                     Contact Seller
                   </button>
                       )}
-                  <button className="px-6 py-3 border border-neutral-300 text-sm font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2">
+                  <button className="px-6 py-3 border border-neutral-300 text-sm font-medium hover:bg-neutral-50 transition-colors flex items-center gap-2"
+                    onClick={() => setIsShareOpen(true)}
+                  >
                     <Share2 className="w-4 h-4" />
                     Share Profile
                   </button>
