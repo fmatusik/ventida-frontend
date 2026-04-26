@@ -117,7 +117,7 @@ export default function FavouritesPage() {
                       <div className="absolute inset-0 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center group-hover:scale-110 transition-transform duration-700">
                         {listing.images && listing.images[0] ? (
                           <img
-                            src={listing.images[0].url}
+                            src={listing.images[0].url.startsWith('http') ? listing.images[0].url : (process.env.NEXT_PUBLIC_SERVER_URL + listing.images[0].url)}
                             alt={listing.title}
                             className="w-full h-full object-cover"
                           />
