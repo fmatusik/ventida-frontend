@@ -7,5 +7,5 @@ export class ShortListingSummaryDto{
     likesCount: number;
     created_at: string;
     imageUrl: string;
-
+    location: string;
 }

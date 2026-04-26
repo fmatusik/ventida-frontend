@@ -3,7 +3,7 @@ import { ShortListingSummaryDto } from "./dto/short-listing-summary.dto";
 import formatTimeAgo from "src/additional/formatAgo.time";
 
 export class ListingMapper{
-    static toShortLisitngSummary(
+    static toShortListingSummary(
         listing: Listing & { 
             _count: { views: number, favourites: number } ,
             category: Category

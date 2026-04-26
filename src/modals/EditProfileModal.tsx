@@ -1,6 +1,7 @@
-import { X, Check, AlertCircle } from 'lucide-react';
+import { X, Check, AlertCircle, Loader, Upload } from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {AccountDetailDto} from "@/models/user/AccountDetailDto";
+import api from '@/lib/api';
 
 type EditProfileModalProps = {
     onClose: () => void;
@@ -17,39 +18,101 @@ export default function EditProfileModal({ onClose, userId }: EditProfileModalPr
     });
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!userId) return;
 
-        fetch(process.env.NEXT_PUBLIC_SERVER_URL + `/user/${userId}`)
-            .then(response => response.json())
-            .then(data => {
-                console.log('User data:', data);
-                setFormData(data);
+        api.get(`/user/${userId}`)
+            .then(res => {
+                setFormData(res.data);
                 setIsLoading(false);
             })
             .catch(error => {
                 console.error('Error fetching user data:', error);
+                setError("Nie udało się pobrać danych użytkownika");
                 setIsLoading(false);
             });
     }, [userId]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.length || !formData) return;
+        
+        setIsUploading(true);
+        const file = e.target.files[0];
+        const uploadData = new FormData();
+        uploadData.append("file", file);
+        
+        try {
+            const res = await api.post("/upload", uploadData, {
+                headers: { "Content-Type": "multipart/form-data" }
+            });
+            if (res.data.success) {
+                setFormData({ ...formData, pictureUrl: res.data.url });
+            }
+        } catch (err) {
+            console.error("Upload error", err);
+            setError("Błąd przy przesyłaniu zdjęcia");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData) return;
-        console.log('Saving...', formData);
+        if (!formData || !userId) return;
+        
+        setIsSaving(true);
+        setError(null);
+        try {
+            await api.put(`/user/${userId}`, formData);
+            onClose();
+            window.location.reload(); // Refresh to see changes
+        } catch (err: any) {
+            setError(err?.response?.data?.message || "Błąd przy zapisywaniu zmian");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    const handlePasswordChange = () => {
-        console.log('Changing password...', passwords);
+    const handlePasswordChange = async () => {
+        if (passwords.newPassword !== passwords.confirmPassword) {
+            setError("Hasła nie są identyczne");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await api.put(`/user/${userId}/password`, {
+                oldPassword: passwords.oldPassword,
+                newPassword: passwords.newPassword
+            });
+            setShowPasswordChange(false);
+            setPasswords({ oldPassword: '', newPassword: '', confirmPassword: '' });
+            alert("Hasło zostało zmienione");
+        } catch (err: any) {
+            setError(err?.response?.data?.message || "Błąd przy zmianie hasła");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    const handleDeleteAccount = () => {
+    const handleDeleteAccount = async () => {
         if (!deleteConfirm) {
             setDeleteConfirm(true);
             setTimeout(() => setDeleteConfirm(false), 3000);
             return;
         }
-        console.log('Deleting account...');
+
+        try {
+            await api.delete(`/user/${userId}`);
+            localStorage.removeItem("accessToken");
+            window.location.href = "/";
+        } catch (err: any) {
+            setError("Błąd przy usuwaniu konta");
+        }
     };
 
     // Loading state
@@ -94,6 +157,41 @@ export default function EditProfileModal({ onClose, userId }: EditProfileModalPr
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                    {/* Profile Picture */}
+                    <div className="flex flex-col items-center pb-6 border-b border-neutral-100">
+                        <div className="relative group">
+                            <div className="w-32 h-32 rounded-full overflow-hidden bg-neutral-100 border-2 border-neutral-200">
+                                {formData.pictureUrl ? (
+                                    <img 
+                                        src={formData.pictureUrl.startsWith('http') ? formData.pictureUrl : (process.env.NEXT_PUBLIC_SERVER_URL + formData.pictureUrl)} 
+                                        alt="Profile" 
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-4xl text-neutral-400">
+                                        {formData.username?.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+                                {isUploading && (
+                                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                                        <Loader className="w-6 h-6 animate-spin text-black" />
+                                    </div>
+                                )}
+                            </div>
+                            <label className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full cursor-pointer hover:bg-neutral-800 transition-colors shadow-lg">
+                                <Upload className="w-4 h-4" />
+                                <input 
+                                    type="file" 
+                                    className="hidden" 
+                                    accept="image/*" 
+                                    onChange={handleImageUpload}
+                                    disabled={isUploading}
+                                />
+                            </label>
+                        </div>
+                        <p className="mt-3 text-xs text-neutral-500 font-medium">Click the icon to change your profile picture</p>
+                    </div>
+
                     {/* Basic Information */}
                     <div className="space-y-6">
                         <div>

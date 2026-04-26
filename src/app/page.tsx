@@ -1,69 +1,55 @@
 "use client";
-import { Search, ShoppingBag, Heart, User, Menu, TrendingUp, Zap, Star } from 'lucide-react';
+import { ShoppingBag, Zap, TrendingUp, Heart } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { useUser } from '@/context/UserContext';
+import api from '@/lib/api';
+import { CategoryDto } from '@/models';
+import { ShortListingSummaryDto } from '@/models/listing/ListingDto';
+import FavouriteButton from '@/components/FavouriteButton';
+
+interface TrendingCategoryDto extends CategoryDto {
+  trendingPercentage: number;
+}
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
+  const [categories, setCategories] = useState<TrendingCategoryDto[]>([]);
+  const [listings, setListings] = useState<ShortListingSummaryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useUser();
 
   useEffect(() => {
     const storedToken = localStorage.getItem("accessToken");
     setToken(storedToken);
   }, []);
-  const trendingItems = [
-    { 
-      id: 1, 
-      title: 'Vintage Denim Jacket', 
-      price: '299', 
-      oldPrice: '599',
-      image: '🧥',
-      seller: 'StyleHub',
-      rating: 4.8,
-      badge: 'Hot'
-    },
-    { 
-      id: 2, 
-      title: 'Minimalist Desk Lamp', 
-      price: '149', 
-      oldPrice: '299',
-      image: '💡',
-      seller: 'HomeEssentials',
-      rating: 4.9,
-      badge: 'New'
-    },
-    { 
-      id: 3, 
-      title: 'Wireless Earbuds Pro', 
-      price: '459', 
-      oldPrice: '799',
-      image: '🎧',
-      seller: 'TechWorld',
-      rating: 4.7,
-      badge: 'Sale'
-    },
-    { 
-      id: 4, 
-      title: 'Canvas Sneakers', 
-      price: '199', 
-      oldPrice: '349',
-      image: '👟',
-      seller: 'UrbanFeet',
-      rating: 4.6,
-      badge: 'Hot'
-    },
-  ];
 
-  const categories = [
-    { name: 'Electronics', count: '12.4k', trend: '+12%' },
-    { name: 'Fashion', count: '18.2k', trend: '+8%' },
-    { name: 'Home', count: '9.7k', trend: '+15%' },
-    { name: 'Sports', count: '6.3k', trend: '+5%' },
-    { name: 'Books', count: '4.1k', trend: '+3%' },
-    { name: 'Motors', count: '3.8k', trend: '+10%' },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch trending categories
+        const categoriesRes = await api.get('/category/trending?limit=6');
+        setCategories(categoriesRes.data.data || []);
+
+        // Fetch listings
+        const listingsRes = await api.get('/listing?skip=0&take=8');
+        setListings(listingsRes.data.data || []);
+      } catch (err: any) {
+        setError(err?.response?.data?.message || 'Błąd przy pobieraniu danych');
+        console.error('Error fetching data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -76,24 +62,24 @@ export default function Home() {
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-black text-white text-xs font-medium rounded-full">
               <Zap className="w-3 h-3" />
-              <span>FLASH DEALS</span>
-              <span className="ml-1 opacity-70">GET 60% OFF</span>
+              <span>OKAZJE DNIA</span>
+              <span className="ml-1 opacity-70">ZYSKAJ DO 60% ZNIŻKI</span>
             </div>
             <h2 className="text-6xl lg:text-7xl font-light leading-[1.1] tracking-tight">
-              Discover
+              Odkryj
               <br />
-              <span className="font-semibold text-primary">unique finds</span>
+              <span className="font-semibold text-primary">wyjątkowe okazje</span>
             </h2>
             <p className="text-lg text-neutral-600 max-w-md leading-relaxed">
-              Shop from verified sellers. Quality products at unbeatable prices. Your marketplace for everything.
+              Kupuj od zweryfikowanych sprzedawców. Produkty wysokiej jakości w bezkonkurencyjnych cenach. Twój rynek na wszystko.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="px-8 py-4 bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors">
-                Explore Now →
-              </button>
-              <button className="px-8 py-4 border border-neutral-300 text-sm font-medium hover:bg-neutral-100 transition-colors">
-                Start Selling
-              </button>
+              <Link href="/listing" className="inline-block px-8 py-4 bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors">
+                Przeglądaj teraz →
+              </Link>
+              <Link href="/listing/create" className="inline-block px-8 py-4 border border-neutral-300 text-sm font-medium hover:bg-neutral-100 transition-colors">
+                Zacznij sprzedawać
+              </Link>
             </div>
           </div>
           
@@ -104,13 +90,13 @@ export default function Home() {
                 <span className="text-9xl">🎒</span>
               </div>
               <div className="absolute top-6 right-6 bg-white px-4 py-2 rounded-full shadow-lg">
-                <span className="text-sm font-medium">Trending</span>
+                <span className="text-sm font-medium">Popularne</span>
               </div>
               <div className="absolute bottom-6 left-6 right-6 bg-white/90 backdrop-blur-sm p-6 rounded-2xl">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">Leather Backpack</h3>
-                    <p className="text-sm text-neutral-600">Premium Collection</p>
+                    <h3 className="font-semibold text-lg mb-1">Skórzany plecak</h3>
+                    <p className="text-sm text-neutral-600">Kolekcja Premium</p>
                   </div>
                   <button className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
                     <Heart className="w-5 h-5" />
@@ -134,15 +120,19 @@ export default function Home() {
       {/* Categories Bar */}
       <section className="px-6 lg:px-12 max-w-[1400px] mx-auto mb-20">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {categories.map((cat, idx) => (
-            <div key={idx} className="bg-white p-6 rounded-2xl border border-neutral-200 hover:border-neutral-300 transition-all cursor-pointer group">
+          {categories.slice(0, 6).map((cat) => (
+            <Link 
+              key={cat.id} 
+              href={`/listing?categoryId=${cat.id}`}
+              className="bg-white p-6 rounded-2xl border border-neutral-200 hover:border-neutral-300 transition-all cursor-pointer group"
+            >
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-xs font-medium text-green-600">{cat.trend}</span>
+                <span className="text-xs font-medium text-green-600">+{cat.trendingPercentage}%</span>
               </div>
               <h3 className="font-semibold text-lg mb-1 group-hover:text-primary transition-colors">{cat.name}</h3>
-              <p className="text-sm text-neutral-500">{cat.count} items</p>
-            </div>
+              <p className="text-sm text-neutral-500">Przeglądaj</p>
+            </Link>
           ))}
         </div>
       </section>
@@ -151,44 +141,77 @@ export default function Home() {
       <section className="px-6 lg:px-12 max-w-[1400px] mx-auto mb-20">
         <div className="flex items-center justify-between mb-8">
           <h3 className="text-3xl font-light">
-            <span className="font-semibold text-primary">Trending</span> this week
+            <span className="font-semibold text-primary">Najnowsze</span> ogłoszenia
           </h3>
-          <button className="text-sm font-medium hover:underline">View all →</button>
+          <Link href="/listing" className="text-sm font-medium hover:underline">Pokaż więcej →</Link>
         </div>
         
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {trendingItems.map((item) => (
-            <div key={item.id} className="group cursor-pointer">
-              <div className="relative aspect-[3/4] bg-neutral-100 rounded-2xl overflow-hidden mb-4">
-                <div className="absolute inset-0 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center group-hover:scale-105 transition-transform duration-500">
-                  <span className="text-8xl">{item.image}</span>
-                </div>
-                <div className="absolute top-4 left-4 bg-black text-white px-3 py-1 rounded-full text-xs font-medium">
-                  {item.badge}
-                </div>
-                <button className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Heart className="w-4 h-4" />
-                </button>
+        {loading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="aspect-[3/4] bg-neutral-200 rounded-2xl mb-4"></div>
+                <div className="h-4 bg-neutral-200 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-neutral-200 rounded w-1/2"></div>
               </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                  <span>{item.seller}</span>
-                  <span>•</span>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                    <span>{item.rating}</span>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="text-center py-12 text-neutral-600">
+            <p>{error}</p>
+          </div>
+        ) : listings.length === 0 ? (
+          <div className="text-center py-12 text-neutral-600">
+            <p>Brak ogłoszeń do wyświetlenia</p>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {listings.map((item) => (
+              <div 
+                key={item.id} 
+                className="group cursor-pointer relative"
+              >
+                <Link href={`/listing/${item.id}`} className="block">
+                  <div className="relative aspect-[3/4] bg-neutral-100 rounded-2xl overflow-hidden mb-4">
+                    <div className="absolute inset-0 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center group-hover:scale-105 transition-transform duration-500">
+                      {item.imageUrl ? (
+                        <img 
+                          src={item.imageUrl.startsWith('http') ? item.imageUrl : (process.env.NEXT_PUBLIC_SERVER_URL + item.imageUrl)} 
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-8xl">📦</span>
+                      )}
+                    </div>
+                    <div className="absolute top-4 left-4 bg-black text-white px-3 py-1 rounded-full text-xs font-medium">
+                      {item.category}
+                    </div>
                   </div>
-                </div>
-                <h4 className="font-medium text-neutral-900">{item.title}</h4>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-semibold">{item.price} PLN</span>
-                  <span className="text-sm text-neutral-400 line-through">{item.oldPrice} PLN</span>
-                </div>
+
+                  <div className="space-y-2 block">
+                    <div className="flex items-center gap-2 text-xs text-neutral-500">
+                      <span>👁️ {item.viewsCount}</span>
+                      <span>•</span>
+                      <span>❤️ {item.likesCount}</span>
+                    </div>
+                    <h4 className="font-medium text-neutral-900 line-clamp-2">{item.title}</h4>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-semibold">{item.price} PLN</span>
+                    </div>
+                    <p className="text-xs text-neutral-500">{item.created_at}</p>
+                  </div>
+                </Link>
+
+                <FavouriteButton 
+                  listingId={item.id} 
+                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity" 
+                  size={16}
+                />
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* CTA Banner */}
@@ -197,16 +220,16 @@ export default function Home() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
           <div className="relative z-10 max-w-xl">
             <h3 className="text-4xl lg:text-5xl font-light mb-4 leading-tight">
-              Start selling
+              Zacznij sprzedawać
               <br />
-              <span className="font-semibold">in minutes</span>
+              <span className="font-semibold">w kilka minut</span>
             </h3>
             <p className="text-neutral-300 mb-8 text-lg">
-              Join 50,000+ sellers and turn your unused items into cash. It's free to list.
+              Dołącz do ponad 50 000 sprzedawców i zamień nieużywane przedmioty na gotówkę. Wystawianie jest darmowe.
             </p>
-            <button className="px-8 py-4 bg-white text-black text-sm font-medium hover:bg-neutral-100 transition-colors">
-              Create Listing →
-            </button>
+            <Link href="/listing/create" className="inline-block px-8 py-4 bg-white text-black text-sm font-medium hover:bg-neutral-100 transition-colors">
+              Stwórz ogłoszenie →
+            </Link>
           </div>
         </div>
       </section>
