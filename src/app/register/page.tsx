@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import Image from "next/image";
 import Logo from "@/components/Logo";
 import { useRouter } from "next/navigation";
@@ -109,21 +108,6 @@ export default function RegisterPage() {
               className="w-full bg-primary transition-all hover:bg-primary-hover text-white font-semibold py-3 rounded-xl cursor-pointer mt-6"
             >
               Zarejestruj się
-            </button>
-
-            <div className="relative my-6">
-              <hr className="border-gray-300" />
-              <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-sm text-gray-500">
-                lub
-              </span>
-            </div>
-
-            <button
-              type="button"
-              className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-xl hover:bg-gray-100 transition cursor-pointer"
-            >
-              <FontAwesomeIcon icon={faGoogle} className="text-primary" />
-              <span className="font-medium text-gray-700">Zarejestruj się przez Google</span>
             </button>
 
             <div className="flex justify-between text-sm text-gray-500 mt-6">
