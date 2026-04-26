@@ -114,6 +114,25 @@ export default function ListingDetail() {
     );
   }
 
+  const handleShare = async () => {
+    const shareData = {
+      title: listing?.title || "Ventida",
+      text: listing?.description?.substring(0, 100) + "...",
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        alert("Link został skopiowany do schowka!");
+      }
+    } catch (err) {
+      console.error("Error sharing:", err);
+    }
+  };
+
   const images = listing.images || [];
 
   return (
@@ -272,7 +291,11 @@ export default function ListingDetail() {
                   <MessageCircle className="w-5 h-5" />
                   Skontaktuj się
                 </button>
-                <button className="w-full px-6 py-4 border border-neutral-300 font-medium rounded-lg hover:bg-neutral-100 transition-colors">
+                <button 
+                  onClick={handleShare}
+                  className="w-full px-6 py-4 border border-neutral-300 font-medium rounded-lg hover:bg-neutral-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Share2 className="w-5 h-5" />
                   Udostępnij
                 </button>
               </div>

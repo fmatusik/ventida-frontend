@@ -42,11 +42,15 @@ function ListingBrowseContent() {
     const type = (searchParams.get("type") as 'listings' | 'profiles') || 'listings';
     const cat = searchParams.get("categoryId") || "";
     const loc = searchParams.get("location") || "";
+    const minP = searchParams.get("minPrice") || "";
+    const maxP = searchParams.get("maxPrice") || "";
     
     setSearchQuery(q);
     setSearchType(type);
     setSelectedCategory(cat);
     setLocation(loc);
+    setMinPrice(minP);
+    setMaxPrice(maxP);
     setSkip(0);
   }, [searchParams]);
 
@@ -93,7 +97,7 @@ function ListingBrowseContent() {
 
   useEffect(() => {
     fetchData();
-  }, [skip, take, selectedCategory, searchQuery, searchType]);
+  }, [skip, take, selectedCategory, searchQuery, searchType, location, minPrice, maxPrice]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +109,10 @@ function ListingBrowseContent() {
     else params.delete("location");
     if (selectedCategory) params.set("categoryId", selectedCategory);
     else params.delete("categoryId");
+    if (minPrice) params.set("minPrice", minPrice);
+    else params.delete("minPrice");
+    if (maxPrice) params.set("maxPrice", maxPrice);
+    else params.delete("maxPrice");
     router.push(`/listing?${params.toString()}`);
   };
 
