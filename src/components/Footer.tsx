@@ -1,53 +1,63 @@
-
 import Link from "next/link";
+import Logo from "@/components/Logo";
+
+const columns = [
+  {
+    title: "Kupuj",
+    links: [
+      { href: "/listing", label: "Wszystkie ogłoszenia" },
+      { href: "/listing?type=profiles", label: "Użytkownicy" },
+      { href: "/favourites", label: "Ulubione" },
+    ],
+  },
+  {
+    title: "Sprzedawaj",
+    links: [
+      { href: "/listing/create", label: "Dodaj ogłoszenie" },
+      { href: "/seller-guide", label: "Poradnik sprzedawcy" },
+      { href: "/pricing", label: "Cennik" },
+    ],
+  },
+  {
+    title: "Informacje",
+    links: [
+      { href: "/terms", label: "Regulamin" },
+      { href: "/privacy", label: "Polityka prywatności" },
+      { href: "/cookies", label: "Cookies" },
+    ],
+  },
+];
 
 export default function Footer() {
-
-    return (
-              <footer className="border-t border-neutral-200 bg-white">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 py-12">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h4 className="font-semibold mb-4">ventida</h4>
-              <p className="text-sm text-neutral-600 leading-relaxed">
-                Twój zaufany rynek do kupowania i sprzedawania przedmiotów wysokiej jakości.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-medium mb-4 text-sm">Sklep</h4>
-              <div className="space-y-2 text-sm text-neutral-600">
-                <Link href="/listing" className="block hover:text-black">Wszystkie ogłoszenia</Link>
-                <Link href="/listing" className="block hover:text-black">Kategorie</Link>
-                <Link href="/listing?type=profiles" className="block hover:text-black">Użytkownicy</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-medium mb-4 text-sm">Sprzedaż</h4>
-              <div className="space-y-2 text-sm text-neutral-600">
-                <Link href="/listing/create" className="block hover:text-black">Zacznij sprzedawać</Link>
-                <Link href="#" className="block hover:text-black">Poradnik sprzedawcy</Link>
-                <Link href="#" className="block hover:text-black">Cennik</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="font-medium mb-4 text-sm">Pomoc</h4>
-              <div className="space-y-2 text-sm text-neutral-600">
-                <Link href="#" className="block hover:text-black">Centrum pomocy</Link>
-                <Link href="#" className="block hover:text-black">Bezpieczeństwo</Link>
-                <Link href="#" className="block hover:text-black">Kontakt</Link>
-              </div>
-            </div>
+  return (
+    <footer className="mt-20 border-t border-neutral-200 bg-white">
+      <div className="container-page py-12">
+        <div className="grid gap-10 md:grid-cols-4">
+          <div>
+            <Logo />
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-600">
+              Twój zaufany rynek do kupowania i sprzedawania przedmiotów – prosto, szybko i bezpiecznie.
+            </p>
           </div>
-          <div className="pt-8 border-t border-neutral-200 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-neutral-500">
-            <p>© 2026 Ventida. Wszelkie prawa zastrzeżone.</p>
-            <div className="flex gap-6">
-                <Link href="/terms" className="hover:text-black transition-colors">Regulamin</Link>
-                <Link href="/privacy" className="hover:text-black transition-colors">Polityka prywatności</Link>
-                <Link href="#" className="hover:text-black transition-colors">Cookies</Link>
-            </div>
-          </div>
+          {columns.map((col) => (
+            <nav key={col.title} aria-label={col.title}>
+              <h2 className="mb-4 text-sm font-semibold text-neutral-900">{col.title}</h2>
+              <ul className="space-y-2 text-sm text-neutral-600">
+                {col.links.map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} className="transition-colors hover:text-primary">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
         </div>
-      </footer>
-    )
-
+        <div className="mt-10 border-t border-neutral-200 pt-6 text-sm text-neutral-500">
+          © {new Date().getFullYear()} Ventida. Wszelkie prawa zastrzeżone.
+        </div>
+      </div>
+    </footer>
+  );
 }

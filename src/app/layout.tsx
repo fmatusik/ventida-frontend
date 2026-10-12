@@ -1,21 +1,23 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 export const metadata: Metadata = {
-  title: "Ventida - Marketplace",
-  description: "Kup i sprzedawaj unikatowe przedmioty",
+  title: {
+    default: "Ventida – lokalny marketplace",
+    template: "%s | Ventida",
+  },
+  description: "Kupuj i sprzedawaj używane i unikatowe przedmioty. Dodawanie ogłoszeń jest darmowe.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f94144",
 };
 
 export default function RootLayout({
@@ -24,10 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="pl">
+      <body className={`${geistSans.variable} min-h-screen antialiased`}>
         <UserProvider>{children}</UserProvider>
       </body>
     </html>

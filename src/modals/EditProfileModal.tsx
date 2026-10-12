@@ -1,405 +1,387 @@
-import { X, Check, AlertCircle, Loader, Upload } from 'lucide-react';
-import {useEffect, useState} from 'react';
-import {AccountDetailDto} from "@/models/user/AccountDetailDto";
-import api from '@/lib/api';
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { AlertTriangle, Camera, Check, Loader2 } from "lucide-react";
+import Modal from "@/components/Modal";
+import Avatar from "@/components/Avatar";
+import api from "@/lib/api";
+import { apiError } from "@/lib/errors";
+import { useUser } from "@/context/UserContext";
 
-type EditProfileModalProps = {
-    onClose: () => void;
-    userId: string | null;
+type Props = {
+  onClose: () => void;
+  userId: number;
 };
 
-export default function EditProfileModal({ onClose, userId }: EditProfileModalProps) {
-    const [formData, setFormData] = useState<AccountDetailDto | null>(null);
-    const [showPasswordChange, setShowPasswordChange] = useState(false);
-    const [passwords, setPasswords] = useState({
-        oldPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-    });
-    const [deleteConfirm, setDeleteConfirm] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+type ProfileForm = {
+  username: string;
+  name: string;
+  surname: string;
+  description: string;
+  city: string;
+  countryCode: string;
+  phone_number: string;
+  pictureUrl: string;
+};
 
-    useEffect(() => {
-        if (!userId) return;
+const PASSWORD_HINT = "Min. 8 znaków, mała i wielka litera oraz cyfra";
 
-        api.get(`/user/${userId}`)
-            .then(res => {
-                setFormData(res.data);
-                setIsLoading(false);
-            })
-            .catch(error => {
-                console.error('Error fetching user data:', error);
-                setError("Nie udało się pobrać danych użytkownika");
-                setIsLoading(false);
-            });
-    }, [userId]);
+export default function EditProfileModal({ onClose, userId }: Props) {
+  const { logout, refresh } = useUser();
+  const [form, setForm] = useState<ProfileForm | null>(null);
+  const [email, setEmail] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.length || !formData) return;
-        
-        setIsUploading(true);
-        const file = e.target.files[0];
-        const uploadData = new FormData();
-        uploadData.append("file", file);
-        
-        try {
-            const res = await api.post("/upload", uploadData, {
-                headers: { "Content-Type": "multipart/form-data" }
-            });
-            if (res.data.success) {
-                setFormData({ ...formData, pictureUrl: res.data.url });
-            }
-        } catch (err) {
-            console.error("Upload error", err);
-            setError("Błąd przy przesyłaniu zdjęcia");
-        } finally {
-            setIsUploading(false);
-        }
-    };
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwords, setPasswords] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!formData || !userId) return;
-        
-        setIsSaving(true);
-        setError(null);
-        try {
-            await api.put(`/user/${userId}`, formData);
-            onClose();
-            window.location.reload(); // Refresh to see changes
-        } catch (err: any) {
-            setError(err?.response?.data?.message || "Błąd przy zapisywaniu zmian");
-        } finally {
-            setIsSaving(false);
-        }
-    };
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
 
-    const handlePasswordChange = async () => {
-        if (passwords.newPassword !== passwords.confirmPassword) {
-            setError("Hasła nie są identyczne");
-            return;
-        }
+  useEffect(() => {
+    api
+      .get("/user/me")
+      .then((res) => {
+        const u = res.data;
+        setEmail(u.email ?? "");
+        setForm({
+          username: u.username ?? "",
+          name: u.name ?? "",
+          surname: u.surname ?? "",
+          description: u.description ?? "",
+          city: u.city ?? "",
+          countryCode: u.countryCode ?? "",
+          phone_number: u.phone_number ?? "",
+          pictureUrl: u.pictureUrl ?? "",
+        });
+      })
+      .catch((err) => setLoadError(apiError(err, "Nie udało się pobrać danych użytkownika")));
+  }, []);
 
-        setIsSaving(true);
-        try {
-            await api.put(`/user/${userId}/password`, {
-                oldPassword: passwords.oldPassword,
-                newPassword: passwords.newPassword
-            });
-            setShowPasswordChange(false);
-            setPasswords({ oldPassword: '', newPassword: '', confirmPassword: '' });
-            alert("Hasło zostało zmienione");
-        } catch (err: any) {
-            setError(err?.response?.data?.message || "Błąd przy zmianie hasła");
-        } finally {
-            setIsSaving(false);
-        }
-    };
+  const set = (key: keyof ProfileForm, value: string) => setForm((f) => (f ? { ...f, [key]: value } : f));
 
-    const handleDeleteAccount = async () => {
-        if (!deleteConfirm) {
-            setDeleteConfirm(true);
-            setTimeout(() => setDeleteConfirm(false), 3000);
-            return;
-        }
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return setError("Zdjęcie może mieć maksymalnie 5 MB");
 
-        try {
-            await api.delete(`/user/${userId}`);
-            localStorage.removeItem("accessToken");
-            window.location.href = "/";
-        } catch (err: any) {
-            setError("Błąd przy usuwaniu konta");
-        }
-    };
-
-    // Loading state
-    if (isLoading || !formData) {
-        return (
-            <div
-                className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-                onClick={onClose}
-            >
-                <div className="w-full max-w-2xl bg-white rounded-sm shadow-xl p-16 text-center">
-                    <div className="animate-pulse">
-                        <div className="h-8 bg-neutral-200 rounded w-1/3 mx-auto mb-4"></div>
-                        <div className="h-4 bg-neutral-100 rounded w-1/2 mx-auto"></div>
-                    </div>
-                </div>
-            </div>
-        );
+    setUploading(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await api.post("/upload", body, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res.data.success) set("pictureUrl", res.data.url);
+    } catch (err) {
+      setError(apiError(err, "Błąd przy przesyłaniu zdjęcia"));
+    } finally {
+      setUploading(false);
     }
+  };
 
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!form) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      // wysyłamy tylko pola, które backend pozwala edytować
+      const { username, ...rest } = form;
+      await api.put(`/user/${userId}`, {
+        ...rest,
+        // pusta nazwa użytkownika = "bez zmian" (backend wymaga 3-30 znaków)
+        ...(username.trim() ? { username: username.trim() } : {}),
+        countryCode: form.countryCode.trim().toUpperCase(),
+      });
+      await refresh();
+      onClose();
+      window.location.reload();
+    } catch (err) {
+      setError(apiError(err, "Błąd przy zapisywaniu zmian"));
+      setSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    setError(null);
+    setNotice(null);
+    if (passwords.newPassword !== passwords.confirmPassword) return setError("Nowe hasła nie są identyczne");
+    setSaving(true);
+    try {
+      await api.put(`/user/${userId}/password`, {
+        oldPassword: passwords.oldPassword,
+        newPassword: passwords.newPassword,
+      });
+      setShowPassword(false);
+      setPasswords({ oldPassword: "", newPassword: "", confirmPassword: "" });
+      setNotice("Hasło zostało zmienione");
+    } catch (err) {
+      setError(apiError(err, "Błąd przy zmianie hasła"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.delete(`/user/${userId}`);
+      logout();
+      window.location.href = "/";
+    } catch (err) {
+      setError(apiError(err, "Błąd przy usuwaniu konta"));
+      setSaving(false);
+    }
+  };
+
+  if (loadError || !form) {
     return (
-        <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-            onClick={onClose}
-        >
-            <div
-                className="w-full max-w-2xl bg-white rounded-sm shadow-xl max-h-[90vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header - Sticky */}
-                <div className="sticky top-0 bg-white border-b border-neutral-200 p-8 pb-6 z-10">
-                    <button
-                        onClick={onClose}
-                        className="absolute top-6 right-6 text-neutral-400 hover:text-black transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                    <h2 className="text-2xl font-light mb-2">Edit Profile</h2>
-                    <p className="text-sm text-neutral-600">
-                        Update your personal information
-                    </p>
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                    {/* Profile Picture */}
-                    <div className="flex flex-col items-center pb-6 border-b border-neutral-100">
-                        <div className="relative group">
-                            <div className="w-32 h-32 rounded-full overflow-hidden bg-neutral-100 border-2 border-neutral-200">
-                                {formData.pictureUrl ? (
-                                    <img 
-                                        src={formData.pictureUrl.startsWith('http') ? formData.pictureUrl : (process.env.NEXT_PUBLIC_SERVER_URL + formData.pictureUrl)} 
-                                        alt="Profile" 
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-4xl text-neutral-400">
-                                        {formData.username?.charAt(0).toUpperCase()}
-                                    </div>
-                                )}
-                                {isUploading && (
-                                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
-                                        <Loader className="w-6 h-6 animate-spin text-black" />
-                                    </div>
-                                )}
-                            </div>
-                            <label className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full cursor-pointer hover:bg-neutral-800 transition-colors shadow-lg">
-                                <Upload className="w-4 h-4" />
-                                <input 
-                                    type="file" 
-                                    className="hidden" 
-                                    accept="image/*" 
-                                    onChange={handleImageUpload}
-                                    disabled={isUploading}
-                                />
-                            </label>
-                        </div>
-                        <p className="mt-3 text-xs text-neutral-500 font-medium">Click the icon to change your profile picture</p>
-                    </div>
-
-                    {/* Basic Information */}
-                    <div className="space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                Username
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.username || ''}
-                                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    First Name
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.name || ''}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    Last Name
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.surname || ''}
-                                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                Description
-                            </label>
-                            <textarea
-                                value={formData.description || ''}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                rows={4}
-                                className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors resize-none"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    City
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.city || ''}
-                                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    Country Code
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.countryCode || ''}
-                                    onChange={(e) => setFormData({ ...formData, countryCode: e.target.value })}
-                                    placeholder="PL"
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Contact Information */}
-                    <div className="pt-6 border-t border-neutral-200 space-y-6">
-                        <h3 className="text-lg font-light">Contact Information</h3>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    Phone Number
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={formData.phone_number || ''}
-                                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                    Email
-                                </label>
-                                <input
-                                    type="email"
-                                    value={formData.email || ''}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Password Section */}
-                    <div className="pt-6 border-t border-neutral-200 space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-light">Password</h3>
-                            <button
-                                type="button"
-                                onClick={() => setShowPasswordChange(!showPasswordChange)}
-                                className="px-4 py-2 text-sm border border-neutral-300 hover:bg-neutral-50 transition-colors"
-                            >
-                                {showPasswordChange ? 'Cancel' : 'Change Password'}
-                            </button>
-                        </div>
-
-                        {showPasswordChange && (
-                            <div className="space-y-4 bg-neutral-50 p-6 border border-neutral-200">
-                                <div>
-                                    <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                        Current Password
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={passwords.oldPassword}
-                                        onChange={(e) => setPasswords({ ...passwords, oldPassword: e.target.value })}
-                                        className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                        New Password
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={passwords.newPassword}
-                                        onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
-                                        className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-neutral-700 mb-2">
-                                        Confirm New Password
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={passwords.confirmPassword}
-                                        onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
-                                        className="w-full px-4 py-3 border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-neutral-400 transition-colors"
-                                    />
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handlePasswordChange}
-                                    className="w-full px-6 py-3 bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors"
-                                >
-                                    Update Password
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="pt-6 border-t border-neutral-200 space-y-4">
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="flex-1 px-6 py-3 border border-neutral-300 text-sm font-medium hover:bg-neutral-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="flex-1 px-6 py-3 bg-black text-white text-sm font-medium hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Check className="w-4 h-4" />
-                                Save Changes
-                            </button>
-                        </div>
-
-                        {/* Delete Account */}
-                        <button
-                            type="button"
-                            onClick={handleDeleteAccount}
-                            className={`w-full px-6 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                                deleteConfirm
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'border border-red-300 text-red-600 hover:bg-red-50'
-                            }`}
-                        >
-                            {deleteConfirm ? (
-                                <>
-                                    <AlertCircle className="w-4 h-4" />
-                                    Click Again to Confirm Delete
-                                </>
-                            ) : (
-                                'Delete Account'
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+      <Modal title="Edytuj profil" onClose={onClose} maxWidth="max-w-2xl">
+        {loadError ? (
+          <p role="alert" className="alert-error">
+            {loadError}
+          </p>
+        ) : (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
+      </Modal>
     );
+  }
+
+  return (
+    <Modal title="Edytuj profil" description="Zaktualizuj swoje dane" onClose={onClose} maxWidth="max-w-2xl">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <div role="alert" className="alert-error">
+            {error}
+          </div>
+        )}
+        {notice && (
+          <div role="status" className="alert-success">
+            {notice}
+          </div>
+        )}
+
+        <div className="flex flex-col items-center border-b border-neutral-100 pb-6">
+          <div className="relative">
+            <Avatar name={form.username || email} src={form.pictureUrl} size={112} />
+            {uploading && (
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/70">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </span>
+            )}
+            <label className="absolute bottom-0 right-0 cursor-pointer rounded-full bg-primary p-2.5 text-white shadow-lg transition-colors focus-within:ring-2 focus-within:ring-primary/50 hover:bg-primary-hover">
+              <Camera className="h-4 w-4" />
+              <span className="sr-only">Zmień zdjęcie profilowe</span>
+              <input
+                type="file"
+                className="sr-only"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={handleImageUpload}
+                disabled={uploading}
+              />
+            </label>
+          </div>
+          {form.pictureUrl && (
+            <button type="button" onClick={() => set("pictureUrl", "")} className="mt-3 text-xs text-neutral-500 underline hover:text-primary">
+              Usuń zdjęcie
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <div>
+            <label htmlFor="ep-username" className="label">
+              Nazwa użytkownika
+            </label>
+            <input
+              id="ep-username"
+              value={form.username}
+              onChange={(e) => set("username", e.target.value)}
+              pattern="[A-Za-z0-9_.\-]{3,30}"
+              title="3–30 znaków: litery, cyfry, _ . -"
+              maxLength={30}
+              className="input"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="ep-name" className="label">
+                Imię
+              </label>
+              <input id="ep-name" value={form.name} maxLength={60} onChange={(e) => set("name", e.target.value)} className="input" />
+            </div>
+            <div>
+              <label htmlFor="ep-surname" className="label">
+                Nazwisko
+              </label>
+              <input id="ep-surname" value={form.surname} maxLength={60} onChange={(e) => set("surname", e.target.value)} className="input" />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="ep-desc" className="label">
+              O mnie
+            </label>
+            <textarea
+              id="ep-desc"
+              value={form.description}
+              maxLength={1000}
+              onChange={(e) => set("description", e.target.value)}
+              rows={4}
+              className="input resize-none"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+            <div>
+              <label htmlFor="ep-city" className="label">
+                Miasto
+              </label>
+              <input id="ep-city" value={form.city} maxLength={80} onChange={(e) => set("city", e.target.value)} className="input" />
+            </div>
+            <div>
+              <label htmlFor="ep-country" className="label">
+                Kraj (kod)
+              </label>
+              <input
+                id="ep-country"
+                value={form.countryCode}
+                onChange={(e) => set("countryCode", e.target.value)}
+                placeholder="PL"
+                maxLength={2}
+                pattern="[A-Za-z]{2}"
+                title="Dwuliterowy kod kraju, np. PL"
+                className="input uppercase"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5 border-t border-neutral-100 pt-6">
+          <h3 className="font-semibold">Dane kontaktowe</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="ep-phone" className="label">
+                Telefon
+              </label>
+              <input
+                id="ep-phone"
+                type="tel"
+                value={form.phone_number}
+                maxLength={20}
+                onChange={(e) => set("phone_number", e.target.value)}
+                className="input"
+              />
+            </div>
+            <div>
+              <label htmlFor="ep-email" className="label">
+                Email
+              </label>
+              <input id="ep-email" type="email" value={email} readOnly disabled className="input" />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 border-t border-neutral-100 pt-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Hasło</h3>
+            <button type="button" onClick={() => setShowPassword((s) => !s)} className="btn-outline !px-4 !py-2">
+              {showPassword ? "Anuluj" : "Zmień hasło"}
+            </button>
+          </div>
+
+          {showPassword && (
+            <div className="space-y-4 rounded-2xl bg-neutral-50 p-5">
+              {(
+                [
+                  ["oldPassword", "Obecne hasło", "current-password"],
+                  ["newPassword", "Nowe hasło", "new-password"],
+                  ["confirmPassword", "Powtórz nowe hasło", "new-password"],
+                ] as const
+              ).map(([key, label, autoComplete]) => (
+                <div key={key}>
+                  <label htmlFor={`ep-${key}`} className="label">
+                    {label}
+                  </label>
+                  <input
+                    id={`ep-${key}`}
+                    type="password"
+                    autoComplete={autoComplete}
+                    maxLength={72}
+                    value={passwords[key]}
+                    onChange={(e) => setPasswords({ ...passwords, [key]: e.target.value })}
+                    className="input"
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-neutral-500">{PASSWORD_HINT}</p>
+              <button
+                type="button"
+                onClick={handlePasswordChange}
+                disabled={saving || !passwords.oldPassword || !passwords.newPassword}
+                className="btn-primary w-full"
+              >
+                Zaktualizuj hasło
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 border-t border-neutral-100 pt-6">
+          <button type="button" onClick={onClose} className="btn-outline flex-1">
+            Anuluj
+          </button>
+          <button type="submit" disabled={saving || uploading} className="btn-primary flex-1">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Zapisz zmiany
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-red-100 bg-red-50/50 p-5">
+          {!showDelete ? (
+            <button type="button" onClick={() => setShowDelete(true)} className="text-sm font-medium text-red-600 hover:underline">
+              Usuń konto
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <p className="flex items-start gap-2 text-sm text-red-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                Konto, ogłoszenia, wiadomości i opinie zostaną trwale usunięte. Tej operacji nie można cofnąć. Wpisz{" "}
+                <strong>USUŃ</strong>, aby potwierdzić.
+              </p>
+              <input
+                value={deleteText}
+                onChange={(e) => setDeleteText(e.target.value)}
+                aria-label="Potwierdź wpisując USUŃ"
+                className="input"
+                placeholder="USUŃ"
+              />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => { setShowDelete(false); setDeleteText(""); }} className="btn-outline flex-1">
+                  Wróć
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={saving || deleteText.trim().toUpperCase() !== "USUŃ"}
+                  className="btn flex-1 bg-red-600 text-white hover:bg-red-700"
+                >
+                  Usuń konto na zawsze
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
 }

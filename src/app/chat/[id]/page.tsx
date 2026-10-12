@@ -1,102 +1,99 @@
 "use client";
-import { useState, useEffect, useRef, useEffect as useLayoutEffect } from "react";
-import { Send, ArrowLeft, Loader, MessageCircle } from "lucide-react";
-import { useRouter, useParams } from "next/navigation";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import api from "@/lib/api";
-import { ChatDto, MessageDto } from "@/models";
-import { useUser } from "@/context/UserContext";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Loader2, MessageCircle, PackageOpen, Send } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import Avatar from "@/components/Avatar";
+import api from "@/lib/api";
+import { apiError } from "@/lib/errors";
+import { mediaUrl } from "@/lib/media";
+import { useRequireAuth } from "@/context/UserContext";
+import { ChatMessage, ChatSummary } from "@/models/chat";
+
+const POLL_MS = 4000;
 
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useUser();
-  const chatId = params.id as string;
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user, ready } = useRequireAuth();
+  const chatId = Number(params.id);
 
-  const [chat, setChat] = useState<ChatDto | null>(null);
-  const [messages, setMessages] = useState<MessageDto[]>([]);
+  const endRef = useRef<HTMLDivElement>(null);
+  const [chat, setChat] = useState<ChatSummary | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [messageText, setMessageText] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
-  useLayoutEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const fetchMessages = useCallback(async () => {
+    const res = await api.get(`/message/chat/${chatId}?skip=0&take=50`);
+    const list: ChatMessage[] = res.data.data || [];
+    setMessages((prev) => (prev.length === list.length && prev.at(-1)?.id === list.at(-1)?.id ? prev : list));
+    // wiadomości od rozmówcy oznaczamy jako przeczytane
+    if (list.some((m) => !m.is_read && m.senderId !== user?.id)) {
+      api.post(`/message/chat/${chatId}/read-all`).catch(() => {});
+    }
+  }, [chatId, user?.id]);
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (!ready || !Number.isInteger(chatId)) return;
+    let cancelled = false;
 
-    const fetchChat = async (isInitial = false) => {
+    (async () => {
       try {
-        if (isInitial) setLoading(true);
-        setError(null);
-
-        // Fetch chat data and messages in parallel
-        const [chatRes, messagesRes] = await Promise.all([
-          api.get(`/chat/${chatId}`),
-          api.get(`/message/chat/${chatId}?skip=0&take=50`)
-        ]);
-
-        setChat(chatRes.data);
-        setMessages(messagesRes.data.data || []);
-      } catch (err: any) {
-        if (isInitial) {
-          setError(err?.response?.data?.message || "Błąd przy pobieraniu czatu");
-        }
+        const chatRes = await api.get(`/chat/${chatId}`);
+        if (cancelled) return;
+        setChat(chatRes.data.data);
+        await fetchMessages();
+      } catch (err) {
+        if (!cancelled) setError(apiError(err, "Nie udało się pobrać rozmowy"));
       } finally {
-        if (isInitial) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+
+    // Odświeżanie tylko gdy karta jest widoczna
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchMessages().catch(() => {});
+    }, POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
     };
+  }, [ready, chatId, fetchMessages]);
 
-    if (chatId) {
-      fetchChat(true); // Initial fetch with loader
-      
-      // Background polling without loader
-      const interval = setInterval(() => fetchChat(false), 3000);
-      return () => clearInterval(interval);
-    }
-  }, [chatId, user, router]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSend = async (e: FormEvent) => {
     e.preventDefault();
-    if (!messageText.trim()) return;
+    const message = text.trim();
+    if (!message || sending) return;
 
     setSending(true);
+    setSendError(null);
     try {
-      const res = await api.post("/message", {
-        message: messageText,
-        chatId: parseInt(chatId),
-      });
-
-      // The backend returns { success: true, data: message }
-      const newMessage = res.data.data || res.data;
-      setMessages([...messages, newMessage]);
-      setMessageText("");
-    } catch (err: any) {
-      console.error("Błąd przy wysyłaniu wiadomości", err);
-      setError("Nie udało się wysłać wiadomości");
+      const res = await api.post("/message", { message, chatId });
+      setMessages((prev) => [...prev, res.data.data]);
+      setText("");
+    } catch (err) {
+      setSendError(apiError(err, "Nie udało się wysłać wiadomości"));
     } finally {
       setSending(false);
     }
   };
 
-  if (!user) {
-    return null;
-  }
-
-  if (loading) {
+  if (!ready || loading) {
     return (
       <div className="min-h-screen bg-neutral-50">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto px-6 py-20 flex items-center justify-center">
-          <Loader className="w-6 h-6 animate-spin" />
+        <div className="flex items-center justify-center pt-48">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       </div>
     );
@@ -106,132 +103,131 @@ export default function ChatPage() {
     return (
       <div className="min-h-screen bg-neutral-50">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto px-6 py-20 text-center">
-          <p className="text-red-600 mb-4">{error}</p>
+        <div className="mx-auto max-w-md px-6 pt-40 text-center">
+          <p role="alert" className="alert-error mb-6">
+            {error || "Nie znaleziono rozmowy"}
+          </p>
+          <Link href="/chat" className="btn-outline">
+            Wróć do wiadomości
+          </Link>
         </div>
       </div>
     );
   }
 
+  const other = chat.userId === user?.id ? chat.listing?.user : chat.user;
+  const listingImage = mediaUrl(chat.listing?.images?.[0]?.url);
+
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col">
+    <div className="min-h-screen bg-neutral-50">
       <Navbar />
 
-      <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-8 flex flex-col">
-        {/* Back button and context */}
-        <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-col px-4 pb-6 pt-24 sm:px-6 sm:pt-28">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={() => router.push("/chat")}
-            className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 group"
+            className="group flex items-center gap-2 text-sm text-neutral-600 hover:text-primary"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Powrót
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            Wszystkie rozmowy
           </button>
-          
+
           {chat.listing && (
-            <Link href={`/listing/${chat.listing.id}`} className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-all shadow-sm">
-              <div className="w-10 h-10 bg-neutral-100 rounded-lg flex items-center justify-center overflow-hidden">
-                {chat.listing.images?.[0] ? (
-                  <img src={chat.listing.images[0].url.startsWith('http') ? chat.listing.images[0].url : (process.env.NEXT_PUBLIC_SERVER_URL + chat.listing.images[0].url)} className="w-full h-full object-cover" alt="" />
-                ) : "📦"}
-              </div>
-              <div className="text-left">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Dotyczy ogłoszenia</p>
-                <p className="text-sm font-semibold text-neutral-900 truncate max-w-[200px]">{chat.listing.title}</p>
-              </div>
+            <Link
+              href={`/listing/${chat.listing.id}`}
+              className="card flex items-center gap-3 px-3 py-2 transition-all hover:border-primary/40"
+            >
+              <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-neutral-100">
+                {listingImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={listingImage} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <PackageOpen className="h-5 w-5 text-neutral-300" />
+                )}
+              </span>
+              <span className="text-left">
+                <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400">Ogłoszenie</span>
+                <span className="block max-w-[220px] truncate text-sm font-semibold">{chat.listing.title}</span>
+              </span>
             </Link>
           )}
         </div>
 
-        {/* Chat container */}
-        <div className="flex-1 bg-white rounded-3xl border border-neutral-200 mb-6 flex flex-col overflow-hidden shadow-sm">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/50">
-            <h2 className="font-semibold text-neutral-900">
-              {chat.userId === user.id ? chat.listing?.user?.username : chat.user?.username}
-            </h2>
-          </div>
+        <section className="card flex h-[65vh] min-h-[420px] flex-col overflow-hidden" aria-label="Rozmowa">
+          <header className="flex items-center gap-3 border-b border-neutral-100 bg-neutral-50/60 px-5 py-3">
+            <Avatar name={other?.username} src={other?.pictureUrl} size={36} />
+            {other?.id ? (
+              <Link href={`/account?id=${other.id}`} className="font-semibold hover:text-primary">
+                {other.username || "Użytkownik"}
+              </Link>
+            ) : (
+              <span className="font-semibold">{other?.username || "Użytkownik"}</span>
+            )}
+          </header>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-neutral-50/30">
+          <div className="flex-1 space-y-3 overflow-y-auto p-5" role="log" aria-live="polite">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-neutral-400 opacity-60">
-                <MessageCircle className="w-12 h-12 mb-2" />
+              <div className="flex h-full flex-col items-center justify-center text-neutral-400">
+                <MessageCircle className="mb-2 h-12 w-12" strokeWidth={1.25} />
                 <p className="text-sm">Brak wiadomości. Zacznij rozmowę!</p>
               </div>
             ) : (
-              <>
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${
-                      message.senderId === user.id
-                        ? "justify-end"
-                        : "justify-start"
-                    }`}
-                  >
+              messages.map((m) => {
+                const mine = m.senderId === user?.id;
+                return (
+                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl shadow-sm ${
-                        message.senderId === user.id
-                          ? "bg-black text-white rounded-br-none"
-                          : "bg-white text-neutral-900 border border-neutral-200 rounded-bl-none"
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 shadow-sm sm:max-w-md ${
+                        mine
+                          ? "rounded-br-sm bg-gradient-to-br from-primary to-secondary text-white"
+                          : "rounded-bl-sm border border-neutral-200 bg-white text-neutral-900"
                       }`}
                     >
-                      <p className="text-sm leading-relaxed break-words">{message.message}</p>
-                      <p
-                        className={`text-[9px] font-medium mt-1 uppercase tracking-wider ${
-                          message.senderId === user.id
-                            ? "text-neutral-400"
-                            : "text-neutral-500"
-                        }`}
-                      >
-                        {new Date(message.created_at).toLocaleTimeString(
-                          "pl-PL",
-                          {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }
-                        )}
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.message}</p>
+                      <p className={`mt-1 text-[10px] ${mine ? "text-white/80" : "text-neutral-400"}`}>
+                        {new Date(m.created_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}
+                        {mine && (m.is_read ? " · Przeczytano" : "")}
                       </p>
                     </div>
                   </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </>
+                );
+              })
             )}
+            <div ref={endRef} />
           </div>
 
-          {/* Message input */}
-          <form
-            onSubmit={handleSendMessage}
-            className="p-4 bg-white border-t border-neutral-100"
-          >
-            <div className="relative flex items-center">
+          <form onSubmit={handleSend} className="border-t border-neutral-100 bg-white p-3">
+            {sendError && (
+              <p role="alert" className="mb-2 px-2 text-xs text-red-600">
+                {sendError}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <label htmlFor="message" className="sr-only">
+                Wiadomość
+              </label>
               <input
+                id="message"
                 type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
+                value={text}
+                maxLength={2000}
+                autoComplete="off"
+                onChange={(e) => setText(e.target.value)}
                 placeholder="Napisz wiadomość..."
-                disabled={sending}
-                className="w-full pl-6 pr-14 py-4 bg-neutral-100 border-none rounded-2xl focus:ring-2 focus:ring-black transition-all disabled:opacity-50 text-sm"
+                className="input !rounded-full !bg-neutral-100 !py-3.5 px-5"
               />
               <button
                 type="submit"
-                disabled={sending || !messageText.trim()}
-                className="absolute right-2 p-3 bg-black text-white rounded-xl hover:bg-neutral-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                disabled={sending || !text.trim()}
+                aria-label="Wyślij"
+                className="btn-primary !rounded-full !p-3.5"
               >
-                {sending ? (
-                  <Loader className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </div>
           </form>
-        </div>
+        </section>
       </div>
-
-      <Footer />
     </div>
   );
 }

@@ -1,87 +1,130 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Heart, Share2, MapPin, User, Phone, Mail, MessageCircle, ArrowLeft, Loader, FolderTree } from "lucide-react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FolderTree,
+  Heart,
+  Mail,
+  MapPin,
+  MessageCircle,
+  PackageOpen,
+  Pencil,
+  Phone,
+  Share2,
+  Star,
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Avatar from "@/components/Avatar";
+import FavouriteButton from "@/components/FavouriteButton";
+import { formatPrice } from "@/components/ListingCard";
 import api from "@/lib/api";
-import { ListingResponseDto } from "@/models/listing/ListingDto";
+import { apiError } from "@/lib/errors";
+import { mediaUrl } from "@/lib/media";
 import { useUser } from "@/context/UserContext";
+import { ListingResponseDto } from "@/models/listing/ListingDto";
 import { AccountDetailDto } from "@/models/user/AccountDetailDto";
 
-import FavouriteButton from "@/components/FavouriteButton";
+const STATUS: Record<string, { label: string; className: string }> = {
+  available: { label: "Dostępne", className: "bg-green-100 text-green-700" },
+  reserved: { label: "Zarezerwowane", className: "bg-secondary-soft text-secondary" },
+  sold: { label: "Sprzedane", className: "bg-neutral-200 text-neutral-600" },
+  archived: { label: "Zakończone", className: "bg-neutral-200 text-neutral-600" },
+};
 
 export default function ListingDetail() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useUser();
+  const { user, isLoading: userLoading } = useUser();
+  const listingId = Number(params.id);
+
   const [listing, setListing] = useState<ListingResponseDto | null>(null);
   const [seller, setSeller] = useState<AccountDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFavourite, setIsFavourite] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [shared, setShared] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
-  const listingId = params.id as string;
-
+  // Dane ogłoszenia
   useEffect(() => {
-    const fetchListing = async () => {
+    if (!Number.isInteger(listingId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- walidacja parametru adresu
+      setError("Nieprawidłowy adres ogłoszenia");
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
       try {
         setLoading(true);
         const res = await api.get(`/listing/${listingId}`);
-        const listingData = res.data.data;
-        setListing(listingData);
-
-        // Fetch seller details
-        try {
-            const sellerRes = await api.get(`/user/${listingData.userId}`);
-            setSeller(sellerRes.data);
-        } catch (e) {
-            console.error("Failed to fetch seller details");
-        }
-
-        // Check if favourite
-        if (user) {
-          const favRes = await api.get(`/favourite/${listingId}/check`);
-          setIsFavourite(favRes.data.data.isFavourite);
-        }
-
-        // Add view
-        try {
-          await api.post("/view", { listingId: parseInt(listingId) });
-        } catch (e) {
-          console.log("Failed to add view");
-        }
-      } catch (err: any) {
-        setError(err?.response?.data?.message || "Błąd przy pobieraniu ogłoszenia");
+        if (cancelled) return;
+        const data: ListingResponseDto = res.data.data;
+        setListing(data);
+        api
+          .get(`/user/${data.userId}`)
+          .then((r) => !cancelled && setSeller(r.data))
+          .catch(() => {});
+      } catch (err) {
+        if (!cancelled) setError(apiError(err, "Błąd przy pobieraniu ogłoszenia"));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
+  }, [listingId]);
 
-    if (listingId) {
-      fetchListing();
-    }
-  }, [listingId, user]);
+  // Wyświetlenie liczymy raz, po ustaleniu czy użytkownik jest zalogowany
+  useEffect(() => {
+    if (!listing || userLoading) return;
+    api.post("/view", { listingId }).catch(() => {});
+  }, [listing?.id, userLoading, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Czy ulubione
+  useEffect(() => {
+    if (!user || !listing) return;
+    api
+      .get(`/favourite/${listingId}/check`)
+      .then((r) => setIsFavourite(r.data.data.isFavourite))
+      .catch(() => {});
+  }, [user, listing?.id, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startChat = async () => {
     if (!user) {
-      router.push("/login");
+      router.push(`/login?next=${encodeURIComponent(`/listing/${listingId}`)}`);
       return;
     }
-
-    if (!listing) return;
-
+    setChatError(null);
     try {
-      const chatRes = await api.post("/chat", {
-        listingId: parseInt(listingId),
-      });
-      // The backend returns { success: true, data: chat }
-      const chatId = chatRes.data.data.id;
-      router.push(`/chat/${chatId}`);
-    } catch (err: any) {
-      console.error("Błąd przy tworzeniu czatu");
+      const res = await api.post("/chat", { listingId });
+      router.push(`/chat/${res.data.data.id}`);
+    } catch (err) {
+      setChatError(apiError(err, "Nie udało się rozpocząć rozmowy"));
+    }
+  };
+
+  const handleShare = async () => {
+    if (!listing) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: listing.title, url: window.location.href });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        setShared(true);
+        setTimeout(() => setShared(false), 2500);
+      }
+    } catch {
+      /* użytkownik anulował udostępnianie */
     }
   };
 
@@ -89,11 +132,14 @@ export default function ListingDetail() {
     return (
       <div className="min-h-screen bg-neutral-50">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto px-6 py-20">
-          <div className="animate-pulse space-y-4">
-            <div className="h-96 bg-neutral-200 rounded-lg"></div>
-            <div className="h-8 bg-neutral-200 rounded w-1/2"></div>
-            <div className="h-4 bg-neutral-200 rounded w-1/4"></div>
+        <div className="container-page animate-pulse space-y-4 pt-32">
+          <div className="grid gap-8 lg:grid-cols-3">
+            <div className="aspect-square rounded-2xl bg-neutral-200 lg:col-span-2" />
+            <div className="space-y-4">
+              <div className="h-8 w-3/4 rounded bg-neutral-200" />
+              <div className="h-12 w-1/2 rounded bg-neutral-200" />
+              <div className="h-40 rounded-2xl bg-neutral-200" />
+            </div>
           </div>
         </div>
       </div>
@@ -104,218 +150,216 @@ export default function ListingDetail() {
     return (
       <div className="min-h-screen bg-neutral-50">
         <Navbar />
-        <div className="max-w-[1400px] mx-auto px-6 py-20 text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <Link href="/listing" className="text-blue-600 hover:underline">
-            Powrót do ogłoszeń
+        <div className="container-page pt-40 text-center">
+          <PackageOpen className="mx-auto mb-4 h-16 w-16 text-neutral-300" strokeWidth={1.25} />
+          <p role="alert" className="mb-6 text-lg text-neutral-700">
+            {error || "Nie znaleziono ogłoszenia"}
+          </p>
+          <Link href="/listing" className="btn-primary">
+            Wróć do ogłoszeń
           </Link>
         </div>
       </div>
     );
   }
 
-  const handleShare = async () => {
-    const shareData = {
-      title: listing?.title || "Ventida",
-      text: listing?.description?.substring(0, 100) + "...",
-      url: window.location.href,
-    };
-
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(window.location.href);
-        alert("Link został skopiowany do schowka!");
-      }
-    } catch (err) {
-      console.error("Error sharing:", err);
-    }
-  };
-
   const images = listing.images || [];
+  const current = images[imageIndex];
+  const isOwner = user?.id === listing.userId;
+  const status = STATUS[listing.status] ?? { label: listing.status, className: "bg-neutral-200 text-neutral-600" };
+  const sellerName = seller?.username || listing.user?.username || "Użytkownik";
+  const hasContact = listing.contact_person || listing.email || listing.phone_number;
 
   return (
     <div className="min-h-screen bg-neutral-50">
       <Navbar />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
-        {/* Back button */}
+      <div className="container-page pb-10 pt-28 sm:pt-32">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 mb-6"
+          className="group mb-6 flex items-center gap-2 text-sm text-neutral-600 hover:text-primary"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
           Powrót
         </button>
 
-        <div className="grid lg:grid-cols-3 gap-8 pt-32">
-          {/* Left - Images */}
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* Galeria */}
           <div className="lg:col-span-2">
-            {/* Main image */}
-            <div className="aspect-square bg-neutral-100 rounded-2xl overflow-hidden mb-4 relative shadow-sm border border-neutral-200">
-              {images.length > 0 ? (
-                <img
-                  src={images[currentImageIndex].url.startsWith('http') ? images[currentImageIndex].url : (process.env.NEXT_PUBLIC_SERVER_URL + images[currentImageIndex].url)}
-                  alt={listing.title}
-                  className="w-full h-full object-cover"
-                />
+            <div className="relative mb-4 aspect-[4/3] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm sm:aspect-square">
+              {current ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={mediaUrl(current.url)} alt={listing.title} className="h-full w-full object-cover" />
               ) : (
-                <div className="flex items-center justify-center w-full h-full text-6xl">
-                  📦
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-soft to-secondary-soft text-primary/40">
+                  <PackageOpen className="h-24 w-24" strokeWidth={1} />
                 </div>
               )}
-              <FavouriteButton 
-                listingId={parseInt(listingId)} 
+
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setImageIndex((i) => (i - 1 + images.length) % images.length)}
+                    aria-label="Poprzednie zdjęcie"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow hover:bg-white"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setImageIndex((i) => (i + 1) % images.length)}
+                    aria-label="Następne zdjęcie"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow hover:bg-white"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white">
+                    {imageIndex + 1} / {images.length}
+                  </span>
+                </>
+              )}
+
+              <FavouriteButton
+                listingId={listingId}
                 initialIsFavourite={isFavourite}
-                className="absolute top-4 right-4"
-                size={24}
+                className="absolute right-4 top-4"
+                size={22}
               />
             </div>
 
-            {/* Thumbnails */}
             {images.length > 1 && (
-              <div className="grid grid-cols-6 gap-2">
+              <ul className="grid grid-cols-5 gap-2 sm:grid-cols-6">
                 {images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentImageIndex(idx)}
-                    className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                      currentImageIndex === idx ? "border-black scale-95 shadow-sm" : "border-neutral-200 hover:border-neutral-300"
-                    }`}
-                  >
-                    <img
-                      src={img.url.startsWith('http') ? img.url : (process.env.NEXT_PUBLIC_SERVER_URL + img.url)}
-                      alt={`${listing.title} ${idx}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
+                  <li key={img.id ?? idx}>
+                    <button
+                      onClick={() => setImageIndex(idx)}
+                      aria-label={`Zdjęcie ${idx + 1}`}
+                      aria-current={imageIndex === idx}
+                      className={`aspect-square w-full overflow-hidden rounded-lg border-2 transition-all ${
+                        imageIndex === idx ? "border-primary shadow-sm" : "border-transparent opacity-70 hover:opacity-100"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={mediaUrl(img.url)} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
+
+            <section className="card mt-8 p-6 sm:p-8">
+              <h2 className="mb-4 text-xl font-bold">Opis</h2>
+              <p className="whitespace-pre-wrap break-words leading-relaxed text-neutral-700">{listing.description}</p>
+            </section>
           </div>
 
-          {/* Right - Details */}
-          <div className="space-y-6">
-            {/* Status */}
-            <div>
-              <span className="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                {listing.status}
-              </span>
-            </div>
-
-            {/* Title and price */}
-            <div>
-              {listing.category && (
-                <Link 
-                  href={`/listing?categoryId=${listing.category.id}`}
-                  className="inline-flex items-center gap-2 px-3 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 rounded-full text-[10px] font-bold tracking-wider uppercase transition-colors mb-3"
-                >
-                  <FolderTree className="w-3 h-3" />
-                  {listing.category.name}
-                </Link>
-              )}
-              <h1 className="text-4xl font-bold mb-4">{listing.title}</h1>
-              <div className="space-y-2">
-                <p className="text-5xl font-bold">{listing.price} PLN</p>
-                {listing.is_negotiable && (
-                  <p className="text-sm text-neutral-600">Cena do negocjacji</p>
+          {/* Szczegóły */}
+          <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+            <div className="card space-y-5 p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
+                {listing.category && (
+                  <Link href={`/listing?categoryId=${listing.category.id}`} className="chip hover:bg-primary-soft hover:text-primary">
+                    <FolderTree className="h-3 w-3" />
+                    {listing.category.name}
+                  </Link>
                 )}
               </div>
+
+              <div>
+                <h1 className="mb-3 break-words text-2xl font-bold leading-tight sm:text-3xl">{listing.title}</h1>
+                <p className="text-4xl font-bold text-primary">{formatPrice(listing.price)}</p>
+                {listing.is_negotiable && <p className="mt-1 text-sm text-neutral-500">Cena do negocjacji</p>}
+              </div>
+
+              <ul className="space-y-2 border-t border-neutral-100 pt-4 text-sm text-neutral-600">
+                <li className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 shrink-0" /> {listing.location}
+                </li>
+                <li>Opublikowano: {new Date(listing.created_at).toLocaleDateString("pl-PL")}</li>
+                {listing._count && (
+                  <li className="flex items-center gap-4">
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-4 w-4" /> {listing._count.views}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Heart className="h-4 w-4" /> {listing._count.favourites}
+                    </span>
+                  </li>
+                )}
+              </ul>
+
+              {chatError && (
+                <p role="alert" className="alert-error">
+                  {chatError}
+                </p>
+              )}
+
+              {isOwner ? (
+                <Link href={`/listing/${listingId}/edit`} className="btn-primary w-full !py-3.5">
+                  <Pencil className="h-4 w-4" /> Edytuj ogłoszenie
+                </Link>
+              ) : (
+                <div className="space-y-3">
+                  <button onClick={startChat} className="btn-primary w-full !py-3.5">
+                    <MessageCircle className="h-5 w-5" /> Napisz do sprzedającego
+                  </button>
+                  <button onClick={handleShare} className="btn-outline w-full">
+                    {shared ? <Check className="h-4 w-4 text-green-600" /> : <Share2 className="h-4 w-4" />}
+                    {shared ? "Link skopiowany" : "Udostępnij"}
+                  </button>
+                </div>
+              )}
+              {isOwner && (
+                <button onClick={handleShare} className="btn-outline w-full">
+                  {shared ? <Check className="h-4 w-4 text-green-600" /> : <Share2 className="h-4 w-4" />}
+                  {shared ? "Link skopiowany" : "Udostępnij"}
+                </button>
+              )}
             </div>
 
-            {/* Info */}
-            <div className="space-y-3 py-6 border-y border-neutral-200">
-              <div className="flex items-center gap-3 text-neutral-600">
-                <MapPin className="w-5 h-5" />
-                <span>{listing.location}</span>
-              </div>
-              <div className="flex items-center gap-3 text-neutral-600">
-                <span className="text-sm">Opublikowane: {new Date(listing.created_at).toLocaleDateString("pl-PL")}</span>
-              </div>
-            </div>
-
-            {/* Seller info */}
-            <div className="bg-neutral-100 p-6 rounded-2xl">
-              <h3 className="font-semibold mb-4">Kontakt ze sprzedającym</h3>
-
-              {seller && (
-                <Link 
-                  href={`/account?id=${seller.id}`}
-                  className="flex items-center gap-4 mb-6 p-3 bg-white rounded-xl hover:shadow-md transition-all group"
-                >
-                  <div className="w-12 h-12 bg-neutral-200 rounded-full overflow-hidden flex-shrink-0 border border-neutral-100">
-                    {seller.pictureUrl ? (
-                      <img 
-                        src={seller.pictureUrl.startsWith('http') ? seller.pictureUrl : (process.env.NEXT_PUBLIC_SERVER_URL + seller.pictureUrl)} 
-                        alt={seller.username} 
-                        className="w-full h-full object-cover" 
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-neutral-500 font-bold">
-                        {seller.username.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-bold text-neutral-900 group-hover:text-black transition-colors">{seller.username}</p>
+            <div className="card space-y-4 p-6">
+              <h2 className="font-semibold">Sprzedający</h2>
+              <Link
+                href={`/account?id=${listing.userId}`}
+                className="group flex items-center gap-3 rounded-xl border border-neutral-100 p-3 transition-all hover:border-primary/40 hover:bg-primary-soft/40"
+              >
+                <Avatar name={sellerName} src={seller?.pictureUrl || listing.user?.pictureUrl} size={48} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold group-hover:text-primary">{sellerName}</p>
+                  {seller ? (
+                    <p className="flex items-center gap-1 text-xs text-neutral-500">
+                      <Star className="h-3 w-3 fill-secondary text-secondary" />
+                      {(seller.rating || 0).toFixed(1)} · {seller.reviews ?? 0} opinii
+                    </p>
+                  ) : (
                     <p className="text-xs text-neutral-500">Zobacz profil →</p>
-                  </div>
-                </Link>
-              )}
+                  )}
+                </div>
+              </Link>
 
-              {listing.contact_person && (
-                <p className="mb-2 text-neutral-700">{listing.contact_person}</p>
-              )}
-              {listing.email && (
-                <div className="flex items-center gap-2 mb-2 text-neutral-600">
-                  <Mail className="w-4 h-4" />
-                  <span>{listing.email}</span>
-                </div>
-              )}
-              {listing.phone_number && (
-                <div className="flex items-center gap-2 text-neutral-600">
-                  <Phone className="w-4 h-4" />
-                  <span>{listing.phone_number}</span>
-                </div>
+              {hasContact && (
+                <ul className="space-y-2 text-sm text-neutral-700">
+                  {listing.contact_person && <li className="font-medium">{listing.contact_person}</li>}
+                  {listing.email && (
+                    <li className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-neutral-400" />
+                      <a href={`mailto:${listing.email}`} className="hover:text-primary hover:underline">
+                        {listing.email}
+                      </a>
+                    </li>
+                  )}
+                  {listing.phone_number && (
+                    <li className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-neutral-400" />
+                      <a href={`tel:${listing.phone_number.replace(/[^+\d]/g, "")}`} className="hover:text-primary hover:underline">
+                        {listing.phone_number}
+                      </a>
+                    </li>
+                  )}
+                </ul>
               )}
             </div>
-
-            {/* Action buttons */}
-            {user?.id !== listing.userId ? (
-              <div className="space-y-3">
-                <button
-                  onClick={startChat}
-                  className="w-full px-6 py-4 bg-black text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors flex items-center justify-center gap-2"
-                >
-                  <MessageCircle className="w-5 h-5" />
-                  Skontaktuj się
-                </button>
-                <button 
-                  onClick={handleShare}
-                  className="w-full px-6 py-4 border border-neutral-300 font-medium rounded-lg hover:bg-neutral-100 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Share2 className="w-5 h-5" />
-                  Udostępnij
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <Link
-                  href={`/listing/${listingId}/edit`}
-                  className="block w-full px-6 py-4 bg-black text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors text-center"
-                >
-                  Edytuj ogłoszenie
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Description */}
-        <div className="mt-12 border-t border-neutral-200 pt-8">
-          <h2 className="text-2xl font-bold mb-4">Opis</h2>
-          <p className="text-neutral-700 whitespace-pre-wrap">{listing.description}</p>
+          </aside>
         </div>
       </div>
 

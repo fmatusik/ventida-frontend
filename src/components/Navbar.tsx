@@ -1,244 +1,300 @@
-'use client';
-import { useState, FormEvent } from "react";
-import { Heart, ShoppingBag, Menu, User, Cloud, MessageCircle, Search, X, LogOut } from "lucide-react";
+"use client";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Heart,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Plus,
+  Search,
+  ShoppingBag,
+  User,
+  Users,
+  X,
+} from "lucide-react";
 import Logo from "./Logo";
+import Avatar from "./Avatar";
 import { useUser } from "@/context/UserContext";
-import { useRouter } from "next/navigation";
+
+const links = [
+  { href: "/listing", label: "Przeglądaj", icon: ShoppingBag },
+  { href: "/listing?type=profiles", label: "Użytkownicy", icon: Users },
+];
 
 export default function Navbar() {
-  const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const { user, setUser, isLoading } = useUser();
+  const { user, logout, isLoading } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Zamknij menu po zmianie strony (aktualizacja stanu podczas renderu zamiast w efekcie)
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    setMenuOpen(false);
+    setUserMenuOpen(false);
+  }
+
+  // Zamknij menu użytkownika po kliknięciu poza nim / Esc
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!userMenuRef.current?.contains(e.target as Node)) setUserMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setUserMenuOpen(false);
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [userMenuOpen]);
+
+  // Blokada przewijania tła przy otwartym menu mobilnym
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    setUser(null);
-    window.location.href = "/";
+    logout();
+    router.push("/");
   };
 
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/listing?q=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchOpen(false);
-      setSearchQuery("");
-    }
+    const q = searchQuery.trim();
+    if (!q) return;
+    router.push(`/listing?q=${encodeURIComponent(q)}`);
+    setSearchQuery("");
+    setMenuOpen(false);
   };
+
+  const isActive = (href: string) => {
+    const path = href.split("?")[0];
+    if (href.includes("type=profiles")) return false;
+    return pathname === path || (path !== "/" && pathname.startsWith(path + "/") && path !== "/listing");
+  };
+
+  const searchForm = (idSuffix: string) => (
+    <form onSubmit={onSearch} role="search" className="relative w-full">
+      <label htmlFor={`nav-search-${idSuffix}`} className="sr-only">
+        Szukaj ogłoszeń
+      </label>
+      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+      <input
+        id={`nav-search-${idSuffix}`}
+        type="search"
+        placeholder="Czego szukasz?"
+        value={searchQuery}
+        maxLength={100}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="w-full rounded-full border border-neutral-200 bg-neutral-100 py-2.5 pl-10 pr-4 text-sm transition-all placeholder:text-neutral-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+      />
+    </form>
+  );
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md z-50 border-b border-neutral-200">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-12">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <div className="flex items-center gap-8 lg:gap-12">
-              <Logo />
-              <nav className="hidden md:flex items-center gap-8">
-                <Link href="/listing" className="text-sm font-medium text-neutral-600 hover:text-black transition-colors">
-                  Przeglądaj
-                </Link>
-                <Link href="/listing?type=profiles" className="text-sm font-medium text-neutral-600 hover:text-black transition-colors">
-                  Użytkownicy
-                </Link>
-                <Link href="/listing/create" className="text-sm font-medium text-neutral-600 hover:text-black transition-colors">
-                  Sprzedaj
-                </Link>
-              </nav>
-            </div>
-            
-            <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-              <div className="relative hidden sm:flex items-center">
-                <form 
-                  onSubmit={onSearch}
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    searchOpen ? 'w-48 sm:w-64 opacity-100' : 'w-0 opacity-0'
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-neutral-200 bg-white/85 backdrop-blur-md">
+        <div className="container-page">
+          <div className="flex h-16 items-center gap-4 sm:h-20 lg:gap-8">
+            <Logo />
+
+            <nav className="hidden items-center gap-1 md:flex" aria-label="Główna nawigacja">
+              {links.map((l) => (
+                <Link
+                  key={l.label}
+                  href={l.href}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors hover:bg-neutral-100 hover:text-neutral-900 ${
+                    isActive(l.href) ? "text-primary" : "text-neutral-600"
                   }`}
                 >
-                  <input
-                    type="text"
-                    placeholder="Szukaj produktów..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-4 py-2 pr-10 bg-neutral-100 border border-neutral-200 rounded-full focus:outline-none focus:ring-2 focus:ring-neutral-400 text-sm"
-                    autoFocus={searchOpen}
-                  />
-                </form>
-                <button 
-                  onClick={() => {
-                    if (searchOpen && searchQuery.trim()) {
-                      onSearch({ preventDefault: () => {} } as FormEvent);
-                    } else {
-                      setSearchOpen(!searchOpen);
-                    }
-                  }}
-                  className="p-2 hover:bg-neutral-100 rounded-full transition-colors ml-2"
-                >
-                  {searchOpen ? (
-                    searchQuery.trim() ? <Search className="w-5 h-5 text-neutral-700" /> : <X className="w-5 h-5 text-neutral-700" />
-                  ) : (
-                    <Search className="w-5 h-5 text-neutral-700" />
-                  )}
-                </button>
-              </div>
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
 
-              {!isLoading && (
+            <div className="mx-auto hidden max-w-md flex-1 md:block">{searchForm("desktop")}</div>
+
+            <div className="ml-auto flex items-center gap-1 sm:gap-2 md:ml-0">
+              <Link href="/listing/create" className="btn-primary hidden !px-4 !py-2.5 sm:inline-flex">
+                <Plus className="h-4 w-4" />
+                Dodaj ogłoszenie
+              </Link>
+
+              {!isLoading && user && (
                 <>
-                  {user ? (
-                    <>
-                      <button className="hidden sm:block p-2 hover:bg-neutral-100 rounded-full transition-colors">
-                        <Link href="/chat" className="block">
-                          <MessageCircle className="w-5 h-5 text-neutral-700" />
+                  <Link
+                    href="/chat"
+                    aria-label="Wiadomości"
+                    className="hidden rounded-full p-2.5 text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-primary sm:block"
+                  >
+                    <MessageCircle className="h-5 w-5" />
+                  </Link>
+                  <Link
+                    href="/favourites"
+                    aria-label="Ulubione"
+                    className="hidden rounded-full p-2.5 text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-primary sm:block"
+                  >
+                    <Heart className="h-5 w-5" />
+                  </Link>
+
+                  <div className="relative hidden sm:block" ref={userMenuRef}>
+                    <button
+                      onClick={() => setUserMenuOpen((o) => !o)}
+                      aria-haspopup="menu"
+                      aria-expanded={userMenuOpen}
+                      aria-label="Menu użytkownika"
+                      className="flex items-center gap-2 rounded-full p-1 pr-3 transition-colors hover:bg-neutral-100"
+                    >
+                      <Avatar name={user.username || user.email} src={user.pictureUrl} size={32} />
+                      <span className="hidden max-w-[120px] truncate text-sm font-medium text-neutral-700 lg:block">
+                        {user.username || "Konto"}
+                      </span>
+                    </button>
+                    {userMenuOpen && (
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl"
+                      >
+                        <Link
+                          role="menuitem"
+                          href={`/account?id=${user.id}`}
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+                        >
+                          <User className="h-4 w-4" /> Mój profil
                         </Link>
-                      </button>
-                      <button className="hidden sm:block p-2 hover:bg-neutral-100 rounded-full transition-colors">
-                        <Link href="/favourites" className="block">
-                          <Heart className="w-5 h-5 text-neutral-700" />
+                        <Link
+                          role="menuitem"
+                          href="/favourites"
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+                        >
+                          <Heart className="h-4 w-4" /> Ulubione
                         </Link>
-                      </button>
-                      <div className="relative group">
-                        <button className="p-2 hover:bg-neutral-100 rounded-full transition-colors flex items-center gap-2">
-                          <Link href={`/account?id=${user.id}`} className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-neutral-200 rounded-full flex items-center justify-center text-xs overflow-hidden border border-neutral-100">
-                              {user.pictureUrl ? (
-                                <img 
-                                  src={user.pictureUrl.startsWith('http') ? user.pictureUrl : (process.env.NEXT_PUBLIC_SERVER_URL + user.pictureUrl)} 
-                                  alt={user.username} 
-                                  className="w-full h-full object-cover" 
-                                />
-                              ) : (
-                                user.username?.charAt(0).toUpperCase() || <User className="w-4 h-4" />
-                              )}
-                            </div>
-                            <span className="hidden lg:block text-sm font-medium text-neutral-700">{user.username}</span>
-                          </Link>
+                        <Link
+                          role="menuitem"
+                          href="/chat"
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+                        >
+                          <MessageCircle className="h-4 w-4" /> Wiadomości
+                        </Link>
+                        <div className="my-1 border-t border-neutral-100" />
+                        <button
+                          role="menuitem"
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-primary hover:bg-primary-soft"
+                        >
+                          <LogOut className="h-4 w-4" /> Wyloguj się
                         </button>
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-neutral-200 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                          <div className="p-2">
-                            <Link href={`/account?id=${user.id}`} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 rounded-lg">
-                              Mój Profil
-                            </Link>
-                            <button 
-                              onClick={handleLogout}
-                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2"
-                            >
-                              <LogOut className="w-4 h-4" />
-                              Wyloguj się
-                            </button>
-                          </div>
-                        </div>
                       </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Link href="/login" className="px-4 py-2 text-sm font-medium text-neutral-700 hover:text-black transition-colors">
-                        Logowanie
-                      </Link>
-                      <Link href="/register" className="px-4 py-2 text-sm font-medium bg-black text-white rounded-full hover:bg-neutral-800 transition-colors">
-                        Rejestracja
-                      </Link>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </>
               )}
 
-              <button 
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-2 hover:bg-neutral-100 rounded-full transition-colors sm:hidden"
+              {!isLoading && !user && (
+                <div className="hidden items-center gap-1 sm:flex">
+                  <Link href="/login" className="btn-ghost !px-4 !py-2.5">
+                    Zaloguj się
+                  </Link>
+                  <Link href="/register" className="btn-outline !px-4 !py-2.5">
+                    Załóż konto
+                  </Link>
+                </div>
+              )}
+
+              <button
+                onClick={() => setMenuOpen(true)}
+                aria-label="Otwórz menu"
+                className="rounded-full p-2.5 transition-colors hover:bg-neutral-100 md:hidden"
               >
-                {menuOpen ? (
-                  <X className="w-5 h-5 text-neutral-700" />
-                ) : (
-                  <Menu className="w-5 h-5 text-neutral-700" />
-                )}
+                <Menu className="h-5 w-5 text-neutral-700" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Mobile Menu */}
-      <div 
-        className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300 ${
-          menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      {/* Menu mobilne */}
+      <div
+        className={`fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={() => setMenuOpen(false)}
+        aria-hidden={!menuOpen}
       >
-        <div 
-          className={`fixed top-0 right-0 h-full w-[280px] bg-white shadow-2xl transform transition-transform duration-300 ${
-            menuOpen ? 'translate-x-0' : 'translate-x-full'
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+          className={`fixed right-0 top-0 flex h-full w-[300px] max-w-[85vw] transform flex-col bg-white shadow-2xl transition-transform duration-300 ${
+            menuOpen ? "translate-x-0" : "translate-x-full"
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-col h-full">
-            <div className="p-6 border-b border-neutral-200 flex justify-between items-center">
-              <Logo />
-              <button onClick={() => setMenuOpen(false)}>
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-4">
-                <Link href="/listing" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>Przeglądaj</span>
-                </Link>
-                <Link href="/listing?type=profiles" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                  <User className="w-5 h-5" />
-                  <span>Użytkownicy</span>
-                </Link>
-                <Link href="/listing/create" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                  <Cloud className="w-5 h-5" />
-                  <span>Sprzedaj</span>
-                </Link>
-                
-                <div className="pt-4 border-t border-neutral-100">
-                  {!isLoading && (
-                    <>
-                      {user ? (
-                        <>
-                          <Link href={`/account?id=${user.id}`} onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                            <User className="w-5 h-5" />
-                            <span>Mój Profil</span>
-                          </Link>
-                          <Link href="/favourites" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                            <Heart className="w-5 h-5" />
-                            <span>Ulubione</span>
-                          </Link>
-                          <Link href="/chat" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 py-2 text-neutral-700 hover:text-black">
-                            <MessageCircle className="w-5 h-5" />
-                            <span>Czaty</span>
-                          </Link>
-                          <button 
-                            onClick={() => {
-                              handleLogout();
-                              setMenuOpen(false);
-                            }}
-                            className="flex items-center gap-3 py-2 text-red-600 w-full text-left"
-                          >
-                            <LogOut className="w-5 h-5" />
-                            <span>Wyloguj się</span>
-                          </button>
-                        </>
-                      ) : (
-                        <div className="space-y-3">
-                          <Link href="/login" onClick={() => setMenuOpen(false)} className="block w-full py-3 text-center border border-neutral-200 rounded-xl">
-                            Logowanie
-                          </Link>
-                          <Link href="/register" onClick={() => setMenuOpen(false)} className="block w-full py-3 text-center bg-black text-white rounded-xl">
-                            Rejestracja
-                          </Link>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center justify-between border-b border-neutral-200 p-5">
+            <Logo />
+            <button onClick={() => setMenuOpen(false)} aria-label="Zamknij menu" className="rounded-full p-2 hover:bg-neutral-100">
+              <X className="h-5 w-5" />
+            </button>
           </div>
-        </div>
+
+          <div className="flex-1 space-y-6 overflow-y-auto p-5">
+            {searchForm("mobile")}
+
+            <Link href="/listing/create" className="btn-primary w-full">
+              <Plus className="h-4 w-4" /> Dodaj ogłoszenie
+            </Link>
+
+            <nav className="space-y-1">
+              {links.map(({ href, label, icon: Icon }) => (
+                <Link key={label} href={href} className="flex items-center gap-3 rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-100">
+                  <Icon className="h-5 w-5" /> {label}
+                </Link>
+              ))}
+              {!isLoading && user && (
+                <>
+                  <Link href={`/account?id=${user.id}`} className="flex items-center gap-3 rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-100">
+                    <User className="h-5 w-5" /> Mój profil
+                  </Link>
+                  <Link href="/favourites" className="flex items-center gap-3 rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-100">
+                    <Heart className="h-5 w-5" /> Ulubione
+                  </Link>
+                  <Link href="/chat" className="flex items-center gap-3 rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-100">
+                    <MessageCircle className="h-5 w-5" /> Wiadomości
+                  </Link>
+                </>
+              )}
+            </nav>
+          </div>
+
+          <div className="space-y-3 border-t border-neutral-200 p-5">
+            {!isLoading && user ? (
+              <button onClick={handleLogout} className="btn-outline w-full">
+                <LogOut className="h-4 w-4" /> Wyloguj się
+              </button>
+            ) : (
+              !isLoading && (
+                <>
+                  <Link href="/login" className="btn-outline w-full">
+                    Zaloguj się
+                  </Link>
+                  <Link href="/register" className="btn-gradient w-full">
+                    Załóż konto
+                  </Link>
+                </>
+              )
+            )}
+          </div>
+        </aside>
       </div>
     </>
   );

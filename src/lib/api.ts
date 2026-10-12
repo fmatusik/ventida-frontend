@@ -1,38 +1,32 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance } from "axios";
+import { clearToken, getToken } from "@/lib/auth";
 
 const api: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_SERVER_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
+  timeout: 20000,
 });
 
-// Interceptor do dodawania tokenu JWT
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Dołącza token JWT
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-// Interceptor do obsługi błędów
+// Wygasły/nieprawidłowy token: czyścimy sesję. Przekierowanie na /login robią
+// chronione strony (useRequireAuth), więc strony publiczne działają dalej.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('accessToken');
-        window.location.href = '/login';
-      }
+    const url: string = error.config?.url ?? "";
+    if (error.response?.status === 401 && !url.includes("/auth/login") && getToken()) {
+      clearToken();
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

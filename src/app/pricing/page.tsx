@@ -30,7 +30,7 @@ export default function PricingPage() {
             </ul>
           </div>
           
-          <div className="bg-black text-white p-8 rounded-3xl border border-black shadow-xl flex flex-col transform md:scale-105">
+          <div className="bg-primary text-white p-8 rounded-3xl border border-primary shadow-xl flex flex-col transform md:scale-105">
             <div className="inline-block px-3 py-1 bg-white/10 text-white text-[10px] font-bold rounded-full mb-4 self-start">POLECANE</div>
             <h3 className="text-xl font-bold mb-2">Promowane</h3>
             <p className="text-4xl font-black mb-6">19 PLN <span className="text-sm font-normal text-neutral-400">/ ogłoszenie</span></p>

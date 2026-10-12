@@ -1,138 +1,116 @@
 "use client";
-import { useState, useEffect } from "react";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { MessageCircle, PackageOpen } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Avatar from "@/components/Avatar";
 import api from "@/lib/api";
-import { ChatDto } from "@/models";
-import { useUser } from "@/context/UserContext";
+import { apiError } from "@/lib/errors";
+import { mediaUrl } from "@/lib/media";
+import { useRequireAuth } from "@/context/UserContext";
+import { ChatSummary } from "@/models/chat";
 
 export default function ChatsPage() {
-  const router = useRouter();
-  const { user } = useUser();
-  const [chats, setChats] = useState<ChatDto[]>([]);
+  const { user, ready } = useRequireAuth();
+  const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const fetchChats = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get("/chat");
-        setChats(res.data.data || []);
-      } catch (err: any) {
-        setError(err?.response?.data?.message || "Błąd przy pobieraniu czatów");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchChats();
-  }, [user, router]);
-
-  if (!user) {
-    return null;
-  }
+    if (!ready) return;
+    api
+      .get("/chat")
+      .then((res) => setChats(res.data.data || []))
+      .catch((err) => setError(apiError(err, "Błąd przy pobieraniu czatów")))
+      .finally(() => setLoading(false));
+  }, [ready]);
 
   return (
     <div className="min-h-screen bg-neutral-50">
       <Navbar />
 
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        {/* Back button */}
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Powrót
-        </button>
-
-        <h1 className="text-4xl font-bold mb-8">Moje czaty</h1>
+      <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-28 sm:px-6 sm:pt-32">
+        <h1 className="mb-8 text-4xl font-bold tracking-tight">
+          Moje <span className="text-primary">wiadomości</span>
+        </h1>
 
         {loading ? (
           <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div
-                key={i}
-                className="h-24 bg-neutral-200 rounded-2xl animate-pulse"
-              ></div>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-24 animate-pulse rounded-2xl bg-neutral-200" />
             ))}
           </div>
         ) : error ? (
-          <div className="text-center py-12 text-neutral-600 bg-white rounded-2xl border border-neutral-200">
-            <p>{error}</p>
+          <div role="alert" className="alert-error">
+            {error}
           </div>
         ) : chats.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200 shadow-sm">
-            <MessageCircle className="w-16 h-16 mx-auto mb-6 text-neutral-300" />
-            <h2 className="text-2xl font-semibold mb-2">Brak czatów</h2>
-            <p className="text-neutral-500 mb-8 max-w-sm mx-auto">
-              Nie masz jeszcze żadnych aktywnych rozmów. Skontaktuj się ze sprzedawcą, aby zacząć.
+          <div className="card py-20 text-center">
+            <MessageCircle className="mx-auto mb-6 h-16 w-16 text-neutral-300" strokeWidth={1.25} />
+            <h2 className="mb-2 text-2xl font-semibold">Brak rozmów</h2>
+            <p className="mx-auto mb-8 max-w-sm text-neutral-500">
+              Skontaktuj się ze sprzedającym z poziomu ogłoszenia, aby rozpocząć rozmowę.
             </p>
-            <Link
-              href="/listing"
-              className="inline-flex items-center gap-2 px-8 py-4 bg-black text-white rounded-2xl font-semibold hover:bg-neutral-800 transition-all shadow-lg active:scale-95"
-            >
+            <Link href="/listing" className="btn-primary">
               Przeglądaj ogłoszenia
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
-            {chats.map((chat: any) => {
-              const lastMessage = chat.messages?.[0];
-              const isBuyer = chat.userId === user.id;
-              const otherUser = isBuyer ? chat.listing?.user : chat.user;
-              
+          <ul className="space-y-3">
+            {chats.map((chat) => {
+              const last = chat.messages?.[0];
+              const isBuyer = chat.userId === user?.id;
+              const other = isBuyer ? chat.listing?.user : chat.user;
+              const image = mediaUrl(chat.listing?.images?.[0]?.url);
+              const unread = chat.unreadCount ?? 0;
+
               return (
-                <Link
-                  key={chat.id}
-                  href={`/chat/${chat.id}`}
-                  className="block bg-white p-5 rounded-2xl border border-neutral-200 hover:border-black transition-all hover:shadow-md group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-neutral-100 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
-                      {chat.listing?.images?.[0]?.url ? (
-                        <img 
-                          src={chat.listing.images[0].url.startsWith('http') ? chat.listing.images[0].url : (process.env.NEXT_PUBLIC_SERVER_URL + chat.listing.images[0].url)} 
-                          alt="" 
-                          className="w-full h-full object-cover rounded-xl" 
-                        />
-                      ) : "📦"}
+                <li key={chat.id}>
+                  <Link
+                    href={`/chat/${chat.id}`}
+                    className={`card group flex items-center gap-4 p-4 transition-all hover:border-primary/40 hover:shadow-md ${
+                      unread > 0 ? "border-primary/30 bg-primary-soft/40" : ""
+                    }`}
+                  >
+                    <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-neutral-100">
+                      {image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={image} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <PackageOpen className="h-6 w-6 text-neutral-300" />
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start mb-1">
-                        <h3 className="font-semibold text-neutral-900 truncate">
-                          {chat.listing?.title || `Chat #${chat.id}`}
-                        </h3>
-                        <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider">
-                          {new Date(chat.created_at).toLocaleDateString("pl-PL")}
-                        </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-0.5 flex items-start justify-between gap-2">
+                        <h2 className="truncate font-semibold text-neutral-900 group-hover:text-primary">
+                          {chat.listing?.title || `Rozmowa #${chat.id}`}
+                        </h2>
+                        <time className="shrink-0 text-xs text-neutral-400" dateTime={last?.created_at ?? chat.created_at}>
+                          {new Date(last?.created_at ?? chat.created_at).toLocaleDateString("pl-PL")}
+                        </time>
                       </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium px-2 py-0.5 bg-neutral-100 rounded-md text-neutral-600">
-                          {otherUser?.username || "Użytkownik"}
-                        </span>
-                        {chat.unreadCount > 0 && (
-                          <span className="w-2 h-2 bg-primary rounded-full"></span>
-                        )}
+                      <div className="mb-1 flex items-center gap-2 text-xs text-neutral-600">
+                        <Avatar name={other?.username} src={other?.pictureUrl} size={20} />
+                        {other?.username || "Użytkownik"}
                       </div>
-                      <p className="text-sm text-neutral-500 truncate italic">
-                        {lastMessage ? lastMessage.message : "Brak wiadomości..."}
+                      <p className={`truncate text-sm ${unread > 0 ? "font-medium text-neutral-900" : "text-neutral-500"}`}>
+                        {last ? (last.senderId === user?.id ? "Ty: " : "") + last.message : "Brak wiadomości"}
                       </p>
                     </div>
-                  </div>
-                </Link>
+                    {unread > 0 && (
+                      <span
+                        className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-bold text-white"
+                        aria-label={`${unread} nieprzeczytanych`}
+                      >
+                        {unread}
+                      </span>
+                    )}
+                  </Link>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
 

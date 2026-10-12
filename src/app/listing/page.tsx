@@ -1,412 +1,330 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Search, Filter, Heart, MapPin, User, Star, Loader, Eye, Clock } from "lucide-react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Filter, Loader2, MapPin, PackageSearch, Search, Star, UserSearch } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import api from "@/lib/api";
-import { ShortListingSummaryDto } from "@/models/listing/ListingDto";
-import { CategoryDto } from "@/models";
-import { AccountDetailDto } from "@/models/user/AccountDetailDto";
-import FavouriteButton from "@/components/FavouriteButton";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Suspense } from "react";
+import Avatar from "@/components/Avatar";
 import CategoryPicker from "@/components/CategoryPicker";
+import ListingCard, { ListingCardSkeleton } from "@/components/ListingCard";
+import api from "@/lib/api";
+import { apiError } from "@/lib/errors";
+import { CategoryDto } from "@/models";
+import { ShortListingSummaryDto } from "@/models/listing/ListingDto";
+import { AccountDetailDto } from "@/models/user/AccountDetailDto";
+
+const PAGE_SIZE = 12;
 
 function ListingBrowseContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  
-  const [searchType, setSearchType] = useState<'listings' | 'profiles'>(
-    (searchParams.get("type") as 'listings' | 'profiles') || 'listings'
-  );
+
+  // Adres URL jest jedynym źródłem prawdy - działa przycisk "wstecz" i udostępnianie linków
+  const type: "listings" | "profiles" = searchParams.get("type") === "profiles" ? "profiles" : "listings";
+  const q = searchParams.get("q") || "";
+  const categoryId = searchParams.get("categoryId") || "";
+  const location = searchParams.get("location") || "";
+  const minPrice = searchParams.get("minPrice") || "";
+  const maxPrice = searchParams.get("maxPrice") || "";
+  const page = Math.max(1, Number(searchParams.get("page")) || 1);
+
+  const [form, setForm] = useState({ q, location, categoryId, minPrice, maxPrice });
+  const [showFilters, setShowFilters] = useState(Boolean(categoryId || minPrice || maxPrice));
+  const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [listings, setListings] = useState<ShortListingSummaryDto[]>([]);
   const [users, setUsers] = useState<AccountDetailDto[]>([]);
-  const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [skip, setSkip] = useState(0);
-  const [take] = useState(12);
-  const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
-  const [selectedCategory, setSelectedCategory] = useState<string>(
-    searchParams.get("categoryId") || ""
-  );
-  const [minPrice, setMinPrice] = useState<string>("");
-  const [maxPrice, setMaxPrice] = useState<string>("");
-  const [location, setLocation] = useState<string>(searchParams.get("location") || "");
-  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    const q = searchParams.get("q") || "";
-    const type = (searchParams.get("type") as 'listings' | 'profiles') || 'listings';
-    const cat = searchParams.get("categoryId") || "";
-    const loc = searchParams.get("location") || "";
-    const minP = searchParams.get("minPrice") || "";
-    const maxP = searchParams.get("maxPrice") || "";
-    
-    setSearchQuery(q);
-    setSearchType(type);
-    setSelectedCategory(cat);
-    setLocation(loc);
-    setMinPrice(minP);
-    setMaxPrice(maxP);
-    setSkip(0);
-  }, [searchParams]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- formularz odzwierciedla parametry URL (np. po kliknięciu "wstecz")
+    setForm({ q, location, categoryId, minPrice, maxPrice });
+  }, [q, location, categoryId, minPrice, maxPrice]);
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const res = await api.get("/category/root");
-        setCategories(res.data.data || []);
-      } catch (err) {
-        console.error("Error fetching categories");
-      }
-    };
-    fetchCategories();
+    api
+      .get("/category/root")
+      .then((res) => setCategories(res.data.data || []))
+      .catch(() => console.error("Error fetching categories"));
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (searchType === 'listings') {
-        const params = new URLSearchParams();
-        params.append("skip", skip.toString());
-        params.append("take", take.toString());
-        if (selectedCategory) params.append("categoryId", selectedCategory);
-        if (searchQuery) params.append("q", searchQuery);
-        if (minPrice) params.append("minPrice", minPrice);
-        if (maxPrice) params.append("maxPrice", maxPrice);
-        if (location) params.append("location", location);
-
-        const res = await api.get(`/listing?${params.toString()}`);
-        setListings(res.data.data || []);
-        setUsers([]);
-      } else {
-        const res = await api.get(`/user/search?q=${encodeURIComponent(searchQuery)}`);
-        setUsers(res.data || []);
-        setListings([]);
-      }
-    } catch (err: any) {
-      setError("Błąd przy pobieraniu danych");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchData();
-  }, [skip, take, selectedCategory, searchQuery, searchType, location, minPrice, maxPrice]);
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (type === "listings") {
+          const params = new URLSearchParams({
+            skip: String((page - 1) * PAGE_SIZE),
+            take: String(PAGE_SIZE),
+          });
+          if (categoryId) params.set("categoryId", categoryId);
+          if (q) params.set("q", q);
+          if (minPrice) params.set("minPrice", minPrice);
+          if (maxPrice) params.set("maxPrice", maxPrice);
+          if (location) params.set("location", location);
+          const res = await api.get(`/listing?${params.toString()}`);
+          if (!cancelled) {
+            setListings(res.data.data || []);
+            setUsers([]);
+          }
+        } else {
+          const res = await api.get(`/user/search?q=${encodeURIComponent(q)}`);
+          if (!cancelled) {
+            setUsers(res.data || []);
+            setListings([]);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError(apiError(err, "Błąd przy pobieraniu danych"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [type, q, categoryId, location, minPrice, maxPrice, page]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSkip(0);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("q", searchQuery);
-    params.set("type", searchType);
-    if (location) params.set("location", location);
-    else params.delete("location");
-    if (selectedCategory) params.set("categoryId", selectedCategory);
-    else params.delete("categoryId");
-    if (minPrice) params.set("minPrice", minPrice);
-    else params.delete("minPrice");
-    if (maxPrice) params.set("maxPrice", maxPrice);
-    else params.delete("maxPrice");
-    router.push(`/listing?${params.toString()}`);
+  const go = (next: Record<string, string>, resetPage = true) => {
+    const params = new URLSearchParams();
+    const merged: Record<string, string> = { type, q, categoryId, location, minPrice, maxPrice, ...next };
+    Object.entries(merged).forEach(([k, v]) => {
+      if (v && !(k === "type" && v === "listings")) params.set(k, v);
+    });
+    if (!resetPage && next.page && next.page !== "1") params.set("page", next.page);
+    const qs = params.toString();
+    router.push(qs ? `/listing?${qs}` : "/listing");
   };
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    go({ ...form });
+  };
+
+  const changePage = (p: number) => {
+    go({ page: String(p) }, false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const activeFilters = [categoryId, minPrice, maxPrice].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-neutral-50">
       <Navbar />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8 pt-32">
-        {/* Toggle Switch */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-neutral-200 p-1 rounded-2xl flex gap-1">
-            <button
-              onClick={() => {
-                setSearchType('listings');
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("type", "listings");
-                router.push(`/listing?${params.toString()}`);
-              }}
-              className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                searchType === 'listings' ? 'bg-white shadow-sm text-black' : 'text-neutral-500 hover:text-neutral-700'
-              }`}
-            >
-              Ogłoszenia
-            </button>
-            <button
-              onClick={() => {
-                setSearchType('profiles');
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("type", "profiles");
-                router.push(`/listing?${params.toString()}`);
-              }}
-              className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                searchType === 'profiles' ? 'bg-white shadow-sm text-black' : 'text-neutral-500 hover:text-neutral-700'
-              }`}
-            >
-              Użytkownicy
-            </button>
+      <div className="container-page pb-10 pt-28 sm:pt-32">
+        <div className="mb-8 flex justify-center">
+          <div role="tablist" aria-label="Typ wyszukiwania" className="flex gap-1 rounded-2xl bg-neutral-200/70 p-1">
+            {(
+              [
+                ["listings", "Ogłoszenia"],
+                ["profiles", "Użytkownicy"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={type === value}
+                onClick={() => go({ type: value })}
+                className={`rounded-xl px-8 py-2.5 text-sm font-semibold transition-all ${
+                  type === value ? "bg-white text-primary shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-8 space-y-6">
-          <form onSubmit={handleSearch} className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-2">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                <input
-                  type="text"
-                  placeholder={searchType === 'listings' ? "Czego szukasz?" : "Szukaj użytkownika..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-white border border-neutral-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black transition-all shadow-sm"
-                />
-              </div>
-              
-              {searchType === 'listings' && (
-                <div className="relative md:w-64">
-                  <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                  <input
-                    type="text"
-                    placeholder="Miejscowość"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-white border border-neutral-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black transition-all shadow-sm"
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="px-8 py-4 bg-black text-white rounded-2xl font-semibold hover:bg-neutral-800 transition-all shadow-md active:scale-95"
-              >
-                Szukaj
-              </button>
-              
-              {searchType === 'listings' && (
-                <button
-                  type="button"
-                  onClick={() => setShowFilters(!showFilters)}
-                  className={`p-4 rounded-2xl border border-neutral-200 flex items-center justify-center transition-all ${showFilters ? 'bg-neutral-100' : 'bg-white shadow-sm'}`}
-                >
-                  <Filter className="w-5 h-5" />
-                </button>
-              )}
+        <form onSubmit={onSubmit} className="mb-8 space-y-4" role="search">
+          <div className="flex flex-col gap-2 md:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="search"
+                aria-label={type === "listings" ? "Czego szukasz?" : "Szukaj użytkownika"}
+                placeholder={type === "listings" ? "Czego szukasz?" : "Szukaj użytkownika..."}
+                value={form.q}
+                maxLength={100}
+                onChange={(e) => setForm({ ...form, q: e.target.value })}
+                className="input !rounded-2xl !py-4 pl-12 shadow-sm"
+              />
             </div>
 
-            {/* Filters */}
-            {showFilters && searchType === 'listings' && (
-              <div className="p-6 bg-white border border-neutral-200 rounded-3xl shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-                <div className="space-y-6">
-                  {/* Hierarchical Category Picker */}
-                  <div className="pb-6 border-b border-neutral-100">
-                    <CategoryPicker 
-                        categories={categories}
-                        initialCategoryId={selectedCategory}
-                        onCategoryChange={(id) => setSelectedCategory(id)}
-                        label="Kategoria"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-sm font-semibold text-neutral-700">Cena (PLN)</label>
-                        <div className="flex gap-2 items-center">
-                        <input
-                            type="number"
-                            placeholder="Od"
-                            value={minPrice}
-                            onChange={(e) => setMinPrice(e.target.value)}
-                            className="w-full px-4 py-2 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black"
-                        />
-                        <span className="text-neutral-400">-</span>
-                        <input
-                            type="number"
-                            placeholder="Do"
-                            value={maxPrice}
-                            onChange={(e) => setMaxPrice(e.target.value)}
-                            className="w-full px-4 py-2 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black"
-                        />
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-end justify-end">
-                        <button 
-                        type="button"
-                        onClick={() => {
-                            setMinPrice("");
-                            setMaxPrice("");
-                            setLocation("");
-                            setSearchQuery("");
-                            setSelectedCategory("");
-                            const params = new URLSearchParams();
-                            params.set("type", searchType);
-                            router.push(`/listing?${params.toString()}`);
-                        }}
-                        className="text-sm text-neutral-500 hover:text-black underline transition-colors"
-                        >
-                        Wyczyść wszystkie filtry
-                        </button>
-                    </div>
-                  </div>
-                </div>
+            {type === "listings" && (
+              <div className="relative md:w-64">
+                <MapPin className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  aria-label="Miejscowość"
+                  placeholder="Miejscowość"
+                  value={form.location}
+                  maxLength={100}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                  className="input !rounded-2xl !py-4 pl-12 shadow-sm"
+                />
               </div>
             )}
-          </form>
-        </div>
 
-        {/* Results */}
-        {loading ? (
-          <div className="flex flex-col items-center py-20">
-            <Loader className="w-8 h-8 animate-spin text-neutral-400 mb-4" />
-            <p className="text-neutral-500">Ładowanie wyników...</p>
+            <button type="submit" className="btn-primary !rounded-2xl !px-8 !py-4">
+              Szukaj
+            </button>
+
+            {type === "listings" && (
+              <button
+                type="button"
+                onClick={() => setShowFilters((s) => !s)}
+                aria-expanded={showFilters}
+                aria-label="Filtry"
+                className={`btn relative !rounded-2xl !px-4 !py-4 border ${
+                  showFilters ? "border-primary bg-primary-soft text-primary" : "border-neutral-200 bg-white"
+                }`}
+              >
+                <Filter className="h-5 w-5" />
+                {activeFilters > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white">
+                    {activeFilters}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
+
+          {showFilters && type === "listings" && (
+            <div className="card space-y-6 p-6">
+              <CategoryPicker
+                categories={categories}
+                initialCategoryId={form.categoryId}
+                onCategoryChange={(id) => setForm((f) => ({ ...f, categoryId: id }))}
+                label="Kategoria"
+              />
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <fieldset className="space-y-2">
+                  <legend className="label">Cena (zł)</legend>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="decimal"
+                      aria-label="Cena od"
+                      placeholder="Od"
+                      value={form.minPrice}
+                      onChange={(e) => setForm({ ...form, minPrice: e.target.value })}
+                      className="input"
+                    />
+                    <span className="text-neutral-400">–</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="decimal"
+                      aria-label="Cena do"
+                      placeholder="Do"
+                      value={form.maxPrice}
+                      onChange={(e) => setForm({ ...form, maxPrice: e.target.value })}
+                      className="input"
+                    />
+                  </div>
+                </fieldset>
+
+                <div className="flex items-end justify-end">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/listing")}
+                    className="text-sm text-neutral-500 underline transition-colors hover:text-primary"
+                  >
+                    Wyczyść wszystkie filtry
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </form>
+
+        {loading ? (
+          type === "listings" ? (
+            <div className="grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <ListingCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-20 text-neutral-500">
+              <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
+              Ładowanie wyników...
+            </div>
+          )
         ) : error ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
-            <p className="text-red-500">{error}</p>
+          <div role="alert" className="alert-error text-center">
+            {error}
+          </div>
+        ) : type === "listings" ? (
+          listings.length === 0 ? (
+            <div className="card px-6 py-20 text-center">
+              <PackageSearch className="mx-auto mb-4 h-14 w-14 text-neutral-300" strokeWidth={1.25} />
+              <h2 className="mb-2 text-xl font-semibold">Brak ogłoszeń</h2>
+              <p className="text-neutral-500">Spróbuj zmienić parametry wyszukiwania.</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-12 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {listings.map((item) => (
+                  <ListingCard key={item.id} item={item} />
+                ))}
+              </div>
+
+              <nav className="mb-12 flex items-center justify-center gap-4" aria-label="Paginacja">
+                <button onClick={() => changePage(page - 1)} disabled={page === 1} className="btn-outline">
+                  Poprzednia
+                </button>
+                <span className="text-sm text-neutral-500">Strona {page}</span>
+                <button onClick={() => changePage(page + 1)} disabled={listings.length < PAGE_SIZE} className="btn-outline">
+                  Następna
+                </button>
+              </nav>
+            </>
+          )
+        ) : users.length === 0 ? (
+          <div className="card px-6 py-20 text-center">
+            <UserSearch className="mx-auto mb-4 h-14 w-14 text-neutral-300" strokeWidth={1.25} />
+            <h2 className="mb-2 text-xl font-semibold">Nie znaleziono użytkowników</h2>
+            <p className="text-neutral-500">{q ? "Spróbuj wyszukać kogoś innego." : "Wpisz nazwę użytkownika, aby go wyszukać."}</p>
           </div>
         ) : (
-          <>
-            {searchType === 'listings' ? (
-              listings.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
-                  <div className="text-6xl mb-4">🔍</div>
-                  <h3 className="text-xl font-semibold mb-2">Brak ogłoszeń</h3>
-                  <p className="text-neutral-500">Spróbuj zmienić parametry wyszukiwania</p>
-                </div>
-              ) : (
-                <>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-                    {listings.map((item) => (
-                      <div key={item.id} className="group relative">
-                        <Link href={`/listing/${item.id}`} className="block">
-                          <div className="relative aspect-[3/4] bg-neutral-100 rounded-3xl overflow-hidden mb-4 shadow-sm group-hover:shadow-md transition-shadow duration-300">
-                            <div className="absolute inset-0 bg-gradient-to-br from-neutral-200 to-neutral-300 flex items-center justify-center group-hover:scale-110 transition-transform duration-700">
-                              {item.imageUrl ? (
-                                <img
-                                  src={item.imageUrl.startsWith('http') ? item.imageUrl : (process.env.NEXT_PUBLIC_SERVER_URL + item.imageUrl)}
-                                  alt={item.title}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-8xl">📦</span>
-                              )}
-                            </div>
-                            <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase">
-                              {item.category}
-                            </div>
-                          </div>
-
-                          <div className="space-y-1 px-1">
-                            <h4 className="font-medium text-neutral-900 line-clamp-2 group-hover:text-primary transition-colors">{item.title}</h4>
-                            <div className="flex items-center justify-between">
-                              <p className="text-xl font-bold">{item.price} PLN</p>
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px] text-neutral-400 font-medium uppercase tracking-tighter">
-                               <MapPin className="w-3 h-3" />
-                               <span>{item.location || "Polska"}</span>
-                               <span>•</span>
-                               <span>{item.created_at}</span>
-                            </div>
-                          </div>
-                        </Link>
-                        <FavouriteButton 
-                          listingId={item.id} 
-                          className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity" 
-                          size={18}
-                        />
-                      </div>
-                    ))}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {users.map((profile) => (
+              <Link
+                key={profile.id}
+                href={`/account?id=${profile.id}`}
+                className="card group p-6 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+              >
+                <div className="mb-4 flex items-center gap-4">
+                  <Avatar name={profile.username} src={profile.pictureUrl} size={64} />
+                  <div className="min-w-0">
+                    <h3 className="truncate text-lg font-bold transition-colors group-hover:text-primary">
+                      {profile.username || "Użytkownik"}
+                    </h3>
+                    <div className="flex items-center gap-1 text-sm text-neutral-600">
+                      <Star className="h-4 w-4 fill-secondary text-secondary" />
+                      {(profile.rating || 0).toFixed(1)}
+                      <span className="text-neutral-400">({profile.reviews ?? 0})</span>
+                    </div>
                   </div>
-
-                  {/* Pagination */}
-                  <div className="flex gap-4 justify-center mb-12">
-                    <button
-                      onClick={() => {
-                        setSkip(Math.max(0, skip - take));
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      disabled={skip === 0}
-                      className="px-8 py-3 border border-neutral-200 bg-white rounded-xl font-medium hover:bg-neutral-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
-                    >
-                      Poprzednia
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSkip(skip + take);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      disabled={listings.length < take}
-                      className="px-8 py-3 border border-neutral-200 bg-white rounded-xl font-medium hover:bg-neutral-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
-                    >
-                      Następna
-                    </button>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-neutral-500">
+                    <MapPin className="h-4 w-4" />
+                    {profile.city || "Polska"}
                   </div>
-                </>
-              )
-            ) : (
-              // Users Results
-              users.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
-                  <div className="text-6xl mb-4">👤</div>
-                  <h3 className="text-xl font-semibold mb-2">Nie znaleziono użytkowników</h3>
-                  <p className="text-neutral-500">Spróbuj wyszukać kogoś innego</p>
+                  <p className="line-clamp-2 text-sm italic text-neutral-600">{profile.description || "Brak opisu profilu"}</p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {users.map((profile) => (
-                    <Link
-                      key={profile.id}
-                      href={`/account?id=${profile.id}`}
-                      className="bg-white p-6 rounded-3xl border border-neutral-200 hover:border-black transition-all group shadow-sm"
-                    >
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-16 h-16 bg-neutral-100 rounded-full overflow-hidden border border-neutral-200 flex-shrink-0">
-                          {profile.pictureUrl ? (
-                            <img
-                              src={profile.pictureUrl.startsWith('http') ? profile.pictureUrl : (process.env.NEXT_PUBLIC_SERVER_URL + profile.pictureUrl)}
-                              alt={profile.username}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-neutral-400">
-                              {profile.username.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg group-hover:text-black">{profile.username}</h3>
-                          <div className="flex items-center gap-1 text-amber-400">
-                            <Star className="w-4 h-4 fill-amber-400" />
-                            <span className="text-sm font-medium text-neutral-600">{profile.rating || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm text-neutral-500">
-                          <MapPin className="w-4 h-4" />
-                          <span>{profile.city || "Polska"}</span>
-                        </div>
-                        <p className="text-sm text-neutral-600 line-clamp-2 italic">
-                          {profile.description || "Brak opisu profilu"}
-                        </p>
-                      </div>
-                      
-                      <div className="mt-6 pt-4 border-t border-neutral-100 text-center">
-                        <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 group-hover:text-black transition-colors">Zobacz profil</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )
-            )}
-          </>
+              </Link>
+            ))}
+          </div>
         )}
       </div>
 
@@ -417,7 +335,13 @@ function ListingBrowseContent() {
 
 export default function ListingBrowse() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-neutral-50 flex items-center justify-center"><Loader className="w-8 h-8 animate-spin" /></div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
       <ListingBrowseContent />
     </Suspense>
   );

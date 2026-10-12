@@ -1,14 +1,14 @@
 export class UserResponseDto {
     id!: number;
-    name!: string;
-    surname!: string;
-    username!: string;
+    name?: string;
+    surname?: string;
+    username?: string;
     email!: string;
     phone_number?: string;
     pictureUrl?: string;
-    googleId?: string;
     city?: string;
     countryCode?: string;
+    role?: "USER" | "ADMIN";
     createdAt!: Date;
     description?: string;
 }

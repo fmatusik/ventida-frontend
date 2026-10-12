@@ -11,22 +11,22 @@ export default function SellerGuidePage() {
         <div className="space-y-8">
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
-              <Camera className="w-8 h-8 mb-4 text-black" />
+              <Camera className="w-8 h-8 mb-4 text-neutral-900" />
               <h3 className="text-xl font-bold mb-2">Zrób dobre zdjęcia</h3>
               <p className="text-neutral-600">Jasne, wyraźne zdjęcia z różnych perspektyw zwiększają szansę na szybką sprzedaż o 70%.</p>
             </div>
             <div className="bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
-              <Tag className="w-8 h-8 mb-4 text-black" />
+              <Tag className="w-8 h-8 mb-4 text-neutral-900" />
               <h3 className="text-xl font-bold mb-2">Uczciwa wycena</h3>
               <p className="text-neutral-600">Sprawdź ceny podobnych przedmiotów na Ventida, aby wystawić ofertę, która przyciągnie kupujących.</p>
             </div>
             <div className="bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
-              <BookOpen className="w-8 h-8 mb-4 text-black" />
+              <BookOpen className="w-8 h-8 mb-4 text-neutral-900" />
               <h3 className="text-xl font-bold mb-2">Szczegółowy opis</h3>
               <p className="text-neutral-600">Opisz stan przedmiotu, wymiary i wszelkie ślady użytkowania. Szczerość buduje zaufanie.</p>
             </div>
             <div className="bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
-              <MessageSquare className="w-8 h-8 mb-4 text-black" />
+              <MessageSquare className="w-8 h-8 mb-4 text-neutral-900" />
               <h3 className="text-xl font-bold mb-2">Szybka komunikacja</h3>
               <p className="text-neutral-600">Odpowiadaj na pytania kupujących najszybciej jak to możliwe. Czas to pieniądz!</p>
             </div>

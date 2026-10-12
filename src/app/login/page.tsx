@@ -1,111 +1,126 @@
 "use client";
-import { useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import Image from "next/image";
-import Logo from "@/components/Logo";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import AuthShell from "@/components/AuthShell";
+import api from "@/lib/api";
+import { apiError } from "@/lib/errors";
+import { safeNext } from "@/lib/auth";
+import { useUser } from "@/context/UserContext";
 
+function LoginForm() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const { user, login, isLoading } = useUser();
 
-export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
+  // Zalogowany użytkownik nie ma tu czego szukać
+  useEffect(() => {
+    if (!isLoading && user) router.replace(next);
+  }, [isLoading, user, next, router]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-
-    const user = {
-      email,
-      password,
-    };
-
+    if (submitting) return;
+    setError("");
+    setSubmitting(true);
     try {
-      const res = await fetch(
-        process.env.NEXT_PUBLIC_SERVER_URL + "/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(user),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Coś poszło nie tak");
-        return;
-      }
-
-      localStorage.setItem("accessToken", data.accessToken);
-
-      window.location.href = "/";
+      const res = await api.post<{ accessToken: string }>("/auth/login", { email, password });
+      await login(res.data.accessToken);
+      router.replace(next);
     } catch (err) {
-      console.error(err);
-      setError("Nie udało się połączyć z serwerem");
+      setError(apiError(err, "Nie udało się zalogować"));
+      setSubmitting(false);
     }
   };
 
-
   return (
-    <div className="w-screen h-screen bg-gradient-to-br from-primary to-secondary flex">
-      <div className="w-[50%]"></div>
-      <div className="bg-white w-[50%] p-20 relative">
-        <Logo />
-        <div className="absolute top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[80%]">
-          <h1 className="font-bold text-4xl mb-8">Zaloguj się</h1>
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-          <form className="space-y-1" onSubmit={handleLogin}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                id="emailInput"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Wprowadź swój email"
-              />
-            </div>
+    <AuthShell title="Witaj ponownie" subtitle="Zaloguj się, aby dodawać ogłoszenia i pisać do sprzedających.">
+      <form onSubmit={handleLogin} className="space-y-5" noValidate={false}>
+        {error && (
+          <div role="alert" className="alert-error">
+            {error}
+          </div>
+        )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Hasło
-              </label>
-              <input
-                type="password"
-                name="password"
-                id="passwordInput"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Wprowadź swoje hasło"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-primary transition-all hover:bg-primary-hover text-white font-semibold py-3 rounded-xl cursor-pointer mt-6"
-            >
-              Zaloguj się
-            </button>
-
-            <div className="flex justify-between text-sm text-gray-500 mt-6">
-              <a href="/register" className="hover:underline">
-                Nie masz konta?{" "}
-                <span className="text-primary font-medium">Zarejestruj się</span>
-              </a>
-            </div>
-            <div className="text-sm text-center hover:underline cursor-pointer hover:text-primary">
-              Zapomniałeś hasła?
-            </div>
-          </form>
+        <div>
+          <label htmlFor="email" className="label">
+            Email
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            maxLength={254}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input"
+            placeholder="jan@example.com"
+          />
         </div>
-      </div>
-    </div>
+
+        <div>
+          <label htmlFor="password" className="label">
+            Hasło
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              maxLength={72}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input pr-12"
+              placeholder="Twoje hasło"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-label={showPassword ? "Ukryj hasło" : "Pokaż hasło"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-400 hover:text-neutral-700"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" disabled={submitting} className="btn-primary w-full !py-3.5">
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Logowanie...
+            </>
+          ) : (
+            "Zaloguj się"
+          )}
+        </button>
+
+        <p className="text-center text-sm text-neutral-500">
+          Nie masz konta?{" "}
+          <Link href={next === "/" ? "/register" : `/register?next=${encodeURIComponent(next)}`} className="font-semibold text-primary hover:underline">
+            Zarejestruj się
+          </Link>
+        </p>
+      </form>
+    </AuthShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
